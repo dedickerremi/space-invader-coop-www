@@ -1,7 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import type { GameState, ServerMessage, ClientMessage } from '@/types/game'
+
+type GameCanvasProps = {
+  matchToken?: string
+  wsUrl?: string
+  matchId?: string
+  playerId?: string
+}
 
 const WS_URL = 'ws://localhost:3001'
 
@@ -20,16 +28,115 @@ const COLORS = {
   background: '#050508',
 }
 
-export function GameCanvas() {
+export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasProps) {
+  const router = useRouter()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const stateRef = useRef<GameState | null>(null)
   const playerIdRef = useRef<string | null>(null)
+  const wsInitializedRef = useRef(false) // Track if WS was initialized
 
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'error'>(
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'ended'>(
     'connecting'
   )
   const [statusText, setStatusText] = useState('Connecting...')
+  const [showPauseMenu, setShowPauseMenu] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const [pausedByMe, setPausedByMe] = useState(false)
+
+  // Initialize WebSocket connection once (no useEffect)
+  if (!wsInitializedRef.current && matchToken && matchId && playerId && wsUrl) {
+    wsInitializedRef.current = true
+    
+    console.log('[WS] Initializing connection...')
+    const params = new URLSearchParams({
+      token: matchToken,
+      matchId,
+      playerId,
+    })
+    const ws = new WebSocket(`${wsUrl}?${params.toString()}`)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      console.log('[WS] Connected')
+      setStatus('connected')
+      setStatusText('Connected')
+    }
+
+    ws.onclose = (event) => {
+      console.log('[WS] Disconnected', event.code, event.reason)
+      wsRef.current = null
+      setStatus((prevStatus) => {
+        if (prevStatus === 'ended') return prevStatus
+        return 'error'
+      })
+      setStatusText((prevText) => {
+        if (prevText.includes('Error:')) return prevText
+        return 'Connection closed'
+      })
+    }
+
+    ws.onerror = (err) => {
+      console.error('[WS] Error:', err)
+      setStatus('error')
+      setStatusText('Connection error - check if backend is running')
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const message: ServerMessage = JSON.parse(event.data)
+        console.log('[WS] Received:', message.type)
+
+        switch (message.type) {
+          case 'STATE':
+            stateRef.current = message.state
+            setIsPaused(message.state.paused)
+            setPausedByMe(message.state.pausedBy === playerIdRef.current)
+            if (message.state.paused && message.state.pausedBy === playerIdRef.current) {
+              setShowPauseMenu(true)
+            }
+            if (!message.state.paused) {
+              setShowPauseMenu(false)
+            }
+            break
+          case 'WELCOME':
+            playerIdRef.current = message.playerId
+            if (matchId) {
+              setStatusText(`Match: ${matchId.slice(-6)}`)
+            } else {
+              setStatusText(`Connected as ${message.playerId.slice(-6)}`)
+            }
+            break
+          case 'ERROR':
+            console.error('[WS] Server error:', message.reason)
+            setStatus('error')
+            setStatusText(`Error: ${message.reason}`)
+            setTimeout(() => {
+              if (wsRef.current) {
+                wsRef.current.close()
+              }
+            }, 2000)
+            break
+          case 'MATCH_ENDED':
+            setStatus('ended')
+            setStatusText(message.reason)
+            setTimeout(() => {
+              sessionStorage.removeItem('matchData')
+              router.push('/')
+            }, 2000)
+            break
+        }
+      } catch {
+        console.warn('[WS] Failed to parse message')
+      }
+    }
+  } else if (!matchToken || !matchId || !playerId || !wsUrl) {
+    if (!wsInitializedRef.current) {
+      console.error('[WS] Missing match data:', { matchToken, matchId, playerId, wsUrl })
+      setStatus('error')
+      setStatusText('Missing match data - please join a match')
+    }
+  }
 
   // Send message to server
   const send = useCallback((message: ClientMessage) => {
@@ -37,6 +144,24 @@ export function GameCanvas() {
       wsRef.current.send(JSON.stringify(message))
     }
   }, [])
+
+  // Toggle pause
+  const togglePause = useCallback(() => {
+    if (isPaused && pausedByMe) {
+      send({ type: 'RESUME' })
+      setShowPauseMenu(false)
+    } else if (!isPaused) {
+      send({ type: 'PAUSE' })
+      setShowPauseMenu(true)
+    }
+  }, [isPaused, pausedByMe, send])
+
+  // Exit game
+  const exitGame = useCallback(() => {
+    send({ type: 'EXIT' })
+    sessionStorage.removeItem('matchData')
+    router.push('/')
+  }, [send, router])
 
   // Render game state to canvas
   const render = useCallback(() => {
@@ -57,7 +182,7 @@ export function GameCanvas() {
       ctx.fillStyle = '#666'
       ctx.font = '24px JetBrains Mono, monospace'
       ctx.textAlign = 'center'
-      ctx.fillText('Waiting for players...', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2)
+      ctx.fillText('Waiting for opponent...', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2)
       ctx.font = '14px JetBrains Mono, monospace'
       ctx.fillText(
         `${state.players.length}/2 connected`,
@@ -121,55 +246,31 @@ export function GameCanvas() {
     }
 
     ctx.shadowBlur = 0
-  }, [])
 
-  // WebSocket connection
+    // Draw pause indicator if paused (but not showing menu - e.g. other player paused)
+    if (state.paused && !showPauseMenu) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+      ctx.fillStyle = '#fff'
+      ctx.font = '24px JetBrains Mono, monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText('PAUSED', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2)
+      ctx.font = '14px JetBrains Mono, monospace'
+      ctx.fillText('Waiting for other player...', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30)
+    }
+  }, [showPauseMenu])
+
+  // Cleanup WebSocket on unmount (minimal useEffect only for cleanup)
   useEffect(() => {
-    const ws = new WebSocket(WS_URL)
-    wsRef.current = ws
-
-    ws.onopen = () => {
-      console.log('[WS] Connected')
-      setStatus('connected')
-      setStatusText('Connected')
-    }
-
-    ws.onclose = () => {
-      console.log('[WS] Disconnected')
-      setStatus('error')
-      setStatusText('Disconnected - Refresh to reconnect')
-    }
-
-    ws.onerror = (err) => {
-      console.error('[WS] Error:', err)
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const message: ServerMessage = JSON.parse(event.data)
-
-        switch (message.type) {
-          case 'STATE':
-            stateRef.current = message.state
-            break
-          case 'WELCOME':
-            playerIdRef.current = message.playerId
-            setStatusText(`Connected as ${message.playerId.slice(-6)}`)
-            break
-          case 'ERROR':
-            setStatus('error')
-            setStatusText(`Error: ${message.reason}`)
-            break
-        }
-      } catch {
-        console.warn('[WS] Failed to parse message')
-      }
-    }
-
     return () => {
-      ws.close()
+      console.log('[WS] Cleaning up connection on unmount')
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
+      wsInitializedRef.current = false
     }
-  }, [])
+  }, []) // Empty deps - only cleanup on unmount
 
   // Input handling
   useEffect(() => {
@@ -177,6 +278,16 @@ export function GameCanvas() {
     let rightPressed = false
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape to toggle pause
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        togglePause()
+        return
+      }
+
+      // Don't process game inputs if paused
+      if (isPaused) return
+
       if (['ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
         e.preventDefault()
       }
@@ -201,6 +312,9 @@ export function GameCanvas() {
     }
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      // Don't process game inputs if paused
+      if (isPaused) return
+
       switch (e.key) {
         case 'ArrowLeft':
           leftPressed = false
@@ -228,7 +342,7 @@ export function GameCanvas() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [send])
+  }, [send, isPaused, togglePause])
 
   // Render loop
   useEffect(() => {
@@ -247,51 +361,56 @@ export function GameCanvas() {
   }, [render])
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: '#0a0a0f',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: 'JetBrains Mono, Fira Code, monospace',
-        color: '#e0e0e0',
-      }}
-    >
-      <h1
-        style={{
-          fontSize: '1.5rem',
-          marginBottom: '1rem',
-          color: '#00ff88',
-          textTransform: 'uppercase',
-          letterSpacing: '0.3em',
-          textShadow: '0 0 20px rgba(0, 255, 136, 0.5)',
-        }}
-      >
-        Space Invaders
-      </h1>
+    <div style={containerStyle}>
+      <div style={headerStyle}>
+        <h1 style={titleStyle}>Space Invaders</h1>
+        <button onClick={togglePause} style={pauseButtonStyle} title="Pause (Esc)">
+          ⏸
+        </button>
+      </div>
 
-      <canvas
-        ref={canvasRef}
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
-        style={{
-          border: '2px solid #00ff88',
-          boxShadow:
-            '0 0 30px rgba(0, 255, 136, 0.3), inset 0 0 60px rgba(0, 0, 0, 0.5)',
-          background: '#050508',
-        }}
-      />
+      <div style={canvasContainerStyle}>
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          style={canvasStyle}
+        />
+
+        {/* Pause Menu Overlay */}
+        {showPauseMenu && (
+          <div style={overlayStyle}>
+            <div style={menuStyle}>
+              <h2 style={menuTitleStyle}>PAUSED</h2>
+              <button onClick={togglePause} style={menuButtonStyle}>
+                Resume
+              </button>
+              <button onClick={exitGame} style={exitButtonStyle}>
+                Exit Game
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Match Ended Overlay */}
+        {status === 'ended' && (
+          <div style={overlayStyle}>
+            <div style={menuStyle}>
+              <h2 style={menuTitleStyle}>MATCH ENDED</h2>
+              <p style={{ color: '#888', marginBottom: '1rem' }}>{statusText}</p>
+              <p style={{ color: '#666', fontSize: '0.875rem' }}>Returning to menu...</p>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div
         style={{
-          marginTop: '1rem',
-          fontSize: '0.875rem',
+          ...statusTextStyle,
           color:
             status === 'connected'
               ? '#00ff88'
-              : status === 'error'
+              : status === 'error' || status === 'ended'
                 ? '#ff4444'
                 : '#666',
         }}
@@ -299,20 +418,129 @@ export function GameCanvas() {
         {statusText}
       </div>
 
-      <div
-        style={{
-          marginTop: '1.5rem',
-          fontSize: '0.75rem',
-          color: '#444',
-          textAlign: 'center',
-        }}
-      >
+      <div style={controlsStyle}>
         <kbd style={kbdStyle}>←</kbd> <kbd style={kbdStyle}>→</kbd> Move
         &nbsp;&nbsp;
         <kbd style={kbdStyle}>Space</kbd> Shoot
+        &nbsp;&nbsp;
+        <kbd style={kbdStyle}>Esc</kbd> Pause
       </div>
     </div>
   )
+}
+
+const containerStyle: React.CSSProperties = {
+  minHeight: '100vh',
+  background: '#0a0a0f',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontFamily: 'JetBrains Mono, Fira Code, monospace',
+  color: '#e0e0e0',
+}
+
+const headerStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '1rem',
+  marginBottom: '1rem',
+}
+
+const titleStyle: React.CSSProperties = {
+  fontSize: '1.5rem',
+  color: '#00ff88',
+  textTransform: 'uppercase',
+  letterSpacing: '0.3em',
+  textShadow: '0 0 20px rgba(0, 255, 136, 0.5)',
+  margin: 0,
+}
+
+const pauseButtonStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #444',
+  color: '#888',
+  fontSize: '1.2rem',
+  padding: '0.3rem 0.6rem',
+  cursor: 'pointer',
+  borderRadius: '4px',
+  transition: 'all 0.2s',
+}
+
+const canvasContainerStyle: React.CSSProperties = {
+  position: 'relative',
+}
+
+const canvasStyle: React.CSSProperties = {
+  border: '2px solid #00ff88',
+  boxShadow:
+    '0 0 30px rgba(0, 255, 136, 0.3), inset 0 0 60px rgba(0, 0, 0, 0.5)',
+  background: '#050508',
+  display: 'block',
+}
+
+const overlayStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  background: 'rgba(0, 0, 0, 0.85)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const menuStyle: React.CSSProperties = {
+  background: '#0a0a0f',
+  border: '2px solid #00ff88',
+  padding: '2rem 3rem',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '1rem',
+  boxShadow: '0 0 30px rgba(0, 255, 136, 0.3)',
+}
+
+const menuTitleStyle: React.CSSProperties = {
+  color: '#00ff88',
+  fontSize: '1.5rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.2em',
+  margin: 0,
+  marginBottom: '1rem',
+}
+
+const menuButtonStyle: React.CSSProperties = {
+  padding: '0.75rem 2rem',
+  background: 'transparent',
+  border: '2px solid #00ff88',
+  color: '#00ff88',
+  fontSize: '1rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  width: '100%',
+  transition: 'all 0.2s',
+}
+
+const exitButtonStyle: React.CSSProperties = {
+  ...menuButtonStyle,
+  borderColor: '#ff4444',
+  color: '#ff4444',
+}
+
+const statusTextStyle: React.CSSProperties = {
+  marginTop: '1rem',
+  fontSize: '0.875rem',
+}
+
+const controlsStyle: React.CSSProperties = {
+  marginTop: '1.5rem',
+  fontSize: '0.75rem',
+  color: '#444',
+  textAlign: 'center',
 }
 
 const kbdStyle: React.CSSProperties = {
@@ -322,4 +550,3 @@ const kbdStyle: React.CSSProperties = {
   padding: '0.2em 0.5em',
   margin: '0 0.2em',
 }
-
