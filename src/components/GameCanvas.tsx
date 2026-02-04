@@ -11,7 +11,8 @@ type GameCanvasProps = {
   playerId?: string
 }
 
-const WS_URL = 'ws://localhost:3001'
+const WS_URL_DEFAULT =
+  (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_WS_URL) || 'ws://localhost:3001'
 
 const CANVAS_WIDTH = 800
 const CANVAS_HEIGHT = 600
@@ -45,16 +46,17 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
   const [pausedByMe, setPausedByMe] = useState(false)
 
   // Initialize WebSocket connection once (no useEffect)
-  if (!wsInitializedRef.current && matchToken && matchId && playerId && wsUrl) {
+  const effectiveWsUrl = wsUrl || WS_URL_DEFAULT
+  if (!wsInitializedRef.current && matchToken && matchId && playerId && effectiveWsUrl) {
     wsInitializedRef.current = true
-    
+
     console.log('[WS] Initializing connection...')
     const params = new URLSearchParams({
       token: matchToken,
       matchId,
       playerId,
     })
-    const ws = new WebSocket(`${wsUrl}?${params.toString()}`)
+    const ws = new WebSocket(`${effectiveWsUrl}?${params.toString()}`)
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -130,9 +132,9 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
         console.warn('[WS] Failed to parse message')
       }
     }
-  } else if (!matchToken || !matchId || !playerId || !wsUrl) {
+  } else if (!matchToken || !matchId || !playerId || !effectiveWsUrl) {
     if (!wsInitializedRef.current) {
-      console.error('[WS] Missing match data:', { matchToken, matchId, playerId, wsUrl })
+      console.error('[WS] Missing match data:', { matchToken, matchId, playerId, wsUrl: effectiveWsUrl })
       setStatus('error')
       setStatusText('Missing match data - please join a match')
     }
