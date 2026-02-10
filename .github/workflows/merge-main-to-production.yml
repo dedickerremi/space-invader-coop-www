@@ -34,6 +34,9 @@ jobs:
           git push origin production
 
       - name: Trigger Vercel production deploy hook
-        if: ${{ secrets.VERCEL_DEPLOY_HOOK_PRODUCTION != '' }}
+        env:
+          HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_PRODUCTION }}
         run: |
-          curl -X POST -f "${{ secrets.VERCEL_DEPLOY_HOOK_PRODUCTION }}"
+          if [ -n "$HOOK_URL" ]; then
+            curl -X POST -f "$HOOK_URL"
+          fi
