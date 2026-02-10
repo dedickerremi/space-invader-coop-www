@@ -40,7 +40,11 @@ export type {
   MatchPollResult,
 } from './types'
 
+// Sprites
+export { createSpriteSheet, generateStars } from './Sprites'
+
 // Class-specific types
 export type { GameClientEventMap } from './GameClient'
 export type { RendererColors, RendererConfig } from './GameRenderer'
 export type { InputCallbacks } from './InputManager'
+export type { SpriteSheet, SpriteColors, Star } from './Sprites'
