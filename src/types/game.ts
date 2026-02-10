@@ -9,14 +9,37 @@ export type Player = {
 export type Bullet = {
   x: number
   y: number
+  ownerId: string
+}
+
+export type Enemy = {
+  x: number
+  y: number
+}
+
+export type PlayerScore = {
+  playerId: string
+  points: number
+  kills: number
+}
+
+export type GameOverSummary = {
+  playerScores: PlayerScore[]
 }
 
 export type GameState = {
   players: Player[]
   bullets: Bullet[]
+  enemies: Enemy[]
+  lives: number
+  points: Record<string, number>
+  kills: Record<string, number>
+  waveNumber: number
   started: boolean
   paused: boolean
   pausedBy: string | null
+  gameOver: boolean
+  gameOverSummary: GameOverSummary | null
 }
 
 // === SERVER MESSAGES ===

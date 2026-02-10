@@ -2,7 +2,15 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import type { GameState, ServerMessage, ClientMessage } from '@/types/game'
+import type { GameState, ServerMessage, ClientMessage, GameOverSummary } from '@/types/game'
+
+type HudState = {
+  totalPoints: number
+  lives: number
+  waveNumber: number
+  gameOver: boolean
+  gameOverSummary: GameOverSummary | null
+}
 
 type GameCanvasProps = {
   matchToken?: string
@@ -21,11 +29,15 @@ const PLAYER_HEIGHT = 20
 const PLAYER_Y = 550
 const BULLET_SIZE = 4
 
+const ENEMY_SIZE = 24
+
 const COLORS = {
   player1: '#00ff88',
   player2: '#00aaff',
   playerDead: '#333',
   bullet: '#ffff00',
+  enemy: '#ff4444',
+  enemyGlow: 'rgba(255, 68, 68, 0.6)',
   background: '#050508',
 }
 
@@ -44,6 +56,13 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
   const [showPauseMenu, setShowPauseMenu] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [pausedByMe, setPausedByMe] = useState(false)
+  const [hud, setHud] = useState<HudState>({
+    totalPoints: 0,
+    lives: 0,
+    waveNumber: 0,
+    gameOver: false,
+    gameOverSummary: null,
+  })
 
   // Initialize WebSocket connection once (no useEffect)
   const effectiveWsUrl = wsUrl || WS_URL_DEFAULT
@@ -90,17 +109,34 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
         console.log('[WS] Received:', message.type)
 
         switch (message.type) {
-          case 'STATE':
-            stateRef.current = message.state
-            setIsPaused(message.state.paused)
-            setPausedByMe(message.state.pausedBy === playerIdRef.current)
-            if (message.state.paused && message.state.pausedBy === playerIdRef.current) {
+          case 'STATE': {
+            const s = message.state
+            stateRef.current = s
+            setIsPaused(s.paused ?? false)
+            setPausedByMe(s.pausedBy === playerIdRef.current)
+            if (s.paused && s.pausedBy === playerIdRef.current) {
               setShowPauseMenu(true)
             }
-            if (!message.state.paused) {
+            if (!s.paused) {
               setShowPauseMenu(false)
             }
+            // Update HUD in React state so header re-renders (ref alone doesn't trigger render)
+            const totalPoints = Object.values(s.points ?? {}).reduce((a, b) => a + b, 0)
+            const lives = s.lives ?? 0
+            const waveNumber = s.waveNumber ?? 0
+            const gameOver = s.gameOver ?? false
+            const gameOverSummary = s.gameOverSummary ?? null
+            setHud((prev) => {
+              const same =
+                prev.totalPoints === totalPoints &&
+                prev.lives === lives &&
+                prev.waveNumber === waveNumber &&
+                prev.gameOver === gameOver
+              if (same && (!gameOver || prev.gameOverSummary)) return prev
+              return { totalPoints, lives, waveNumber, gameOver, gameOverSummary }
+            })
             break
+          }
           case 'WELCOME':
             playerIdRef.current = message.playerId
             if (matchId) {
@@ -179,6 +215,11 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
 
     if (!state) return
 
+    const enemies = state.enemies ?? []
+    const lives = state.lives ?? 0
+    const points = state.points ?? {}
+    const totalPoints = Object.values(points).reduce((a, b) => a + b, 0)
+
     // Waiting message
     if (!state.started) {
       ctx.fillStyle = '#666'
@@ -248,6 +289,16 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     }
 
     ctx.shadowBlur = 0
+
+    // Draw enemies
+    const half = ENEMY_SIZE / 2
+    for (const e of enemies) {
+      ctx.fillStyle = COLORS.enemy
+      ctx.shadowColor = COLORS.enemyGlow
+      ctx.shadowBlur = 12
+      ctx.fillRect(e.x - half, e.y - half, ENEMY_SIZE, ENEMY_SIZE)
+      ctx.shadowBlur = 0
+    }
 
     // Draw pause indicator if paused (but not showing menu - e.g. other player paused)
     if (state.paused && !showPauseMenu) {
@@ -362,11 +413,17 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     }
   }, [render])
 
+  const { totalPoints, lives, gameOver, gameOverSummary } = hud
+
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
         <h1 style={titleStyle}>Space Invaders</h1>
-        <button onClick={togglePause} style={pauseButtonStyle} title="Pause (Esc)">
+        <div style={scoreLivesStyle}>
+          <span style={scoreStyle}>Score: {totalPoints}</span>
+          <span style={livesStyle}>Lives: {lives}</span>
+        </div>
+        <button onClick={togglePause} style={pauseButtonStyle} title="Pause (Esc)" disabled={gameOver}>
           ⏸
         </button>
       </div>
@@ -394,8 +451,39 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
           </div>
         )}
 
-        {/* Match Ended Overlay */}
-        {status === 'ended' && (
+        {/* Game Over Overlay (no lives left) */}
+        {gameOver && gameOverSummary && (
+          <div style={overlayStyle}>
+            <div style={menuStyle}>
+              <h2 style={menuTitleStyle}>Game Over</h2>
+              <p style={{ color: '#888', marginBottom: '1rem' }}>No lives left!</p>
+              <div style={summaryTableStyle}>
+                <div style={summaryRowStyle}>
+                  <span style={summaryHeaderStyle}>Player</span>
+                  <span style={summaryHeaderStyle}>Kills</span>
+                  <span style={summaryHeaderStyle}>Points</span>
+                </div>
+                {gameOverSummary.playerScores.map((s, i) => (
+                  <div key={s.playerId} style={summaryRowStyle}>
+                    <span style={s.playerId === playerId ? summaryYouStyle : undefined}>
+                      {s.playerId === playerId ? 'You' : `P${i + 1}`}
+                    </span>
+                    <span>{s.kills}</span>
+                    <span>{s.points}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                <button onClick={exitGame} style={menuButtonStyle}>
+                  Return to menu
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Match Ended Overlay (disconnect / exit) */}
+        {status === 'ended' && !gameOver && (
           <div style={overlayStyle}>
             <div style={menuStyle}>
               <h2 style={menuTitleStyle}>MATCH ENDED</h2>
@@ -456,6 +544,37 @@ const titleStyle: React.CSSProperties = {
   letterSpacing: '0.3em',
   textShadow: '0 0 20px rgba(0, 255, 136, 0.5)',
   margin: 0,
+}
+
+const scoreLivesStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '1.5rem',
+  alignItems: 'center',
+  fontSize: '1rem',
+}
+const scoreStyle: React.CSSProperties = { color: '#00ff88' }
+const livesStyle: React.CSSProperties = { color: '#ffaa00' }
+
+const summaryTableStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.5rem',
+  minWidth: '220px',
+  marginBottom: '0.5rem',
+}
+const summaryRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr 1fr',
+  gap: '1rem',
+  fontSize: '0.9rem',
+}
+const summaryHeaderStyle: React.CSSProperties = {
+  fontWeight: 'bold',
+  color: '#00ff88',
+}
+const summaryYouStyle: React.CSSProperties = {
+  color: '#00aaff',
+  fontWeight: 'bold',
 }
 
 const pauseButtonStyle: React.CSSProperties = {
