@@ -1,29 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { MatchmakingClient } from '@/core'
+import type { MatchData } from '@/core'
 
 type MatchStatus = 'idle' | 'joining' | 'waiting' | 'ready' | 'error'
 
-type MatchData = {
-  matchId: string
-  matchToken: string
-  wsUrl: string
-  playerId: string
-}
-
-function generateUserId(): string {
-  // Use sessionStorage so each tab gets a unique userId
-  const stored = sessionStorage.getItem('userId')
-  if (stored) return stored
-
-  const id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  sessionStorage.setItem('userId', id)
-  return id
-}
-
 export default function Home() {
   const router = useRouter()
+  const matchmakingRef = useRef(new MatchmakingClient())
   const [userId, setUserId] = useState<string | null>(null)
   const [status, setStatus] = useState<MatchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -31,24 +17,23 @@ export default function Home() {
 
   // Generate userId on mount
   useEffect(() => {
-    setUserId(generateUserId())
+    setUserId(MatchmakingClient.generateUserId())
   }, [])
 
   // Poll for match when waiting
   useEffect(() => {
     if (status !== 'waiting' || !userId) return
 
+    const mm = matchmakingRef.current
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/match/current?userId=${userId}`)
-        const data = await res.json()
-
-        if (data.status === 'ready') {
+        const result = await mm.pollMatch(userId)
+        if (result.status === 'ready') {
           setMatchData({
-            matchId: data.matchId,
-            matchToken: data.matchToken,
-            wsUrl: data.wsUrl,
-            playerId: data.playerId,
+            matchId: result.matchId,
+            matchToken: result.matchToken,
+            wsUrl: result.wsUrl,
+            playerId: result.playerId,
           })
           setStatus('ready')
         }
@@ -63,7 +48,6 @@ export default function Home() {
   // Redirect to game when match is ready
   useEffect(() => {
     if (status === 'ready' && matchData) {
-      // Store match data for the game page
       sessionStorage.setItem('matchData', JSON.stringify(matchData))
       router.push('/play')
     }
@@ -76,27 +60,21 @@ export default function Home() {
     setError(null)
 
     try {
-      const res = await fetch('/api/queue/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
-      })
+      const result = await matchmakingRef.current.joinQueue(userId)
 
-      const data = await res.json()
-
-      if (data.status === 'matched') {
+      if (result.status === 'matched') {
         setMatchData({
-          matchId: data.matchId,
-          matchToken: data.matchToken,
-          wsUrl: data.wsUrl,
-          playerId: data.playerId,
+          matchId: result.matchId,
+          matchToken: result.matchToken,
+          wsUrl: result.wsUrl,
+          playerId: result.playerId,
         })
         setStatus('ready')
-      } else if (data.status === 'queued') {
+      } else if (result.status === 'queued') {
         setStatus('waiting')
       } else {
         setStatus('error')
-        setError(data.error || 'Unknown error')
+        setError(result.error)
       }
     } catch (err) {
       setStatus('error')
@@ -109,11 +87,7 @@ export default function Home() {
     if (!userId) return
 
     try {
-      await fetch('/api/queue/leave', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
-      })
+      await matchmakingRef.current.leaveQueue(userId)
     } catch (err) {
       console.error('Leave queue error:', err)
     }
@@ -170,6 +144,8 @@ export default function Home() {
     </div>
   )
 }
+
+// --- Styles (unchanged) ---
 
 const containerStyle: React.CSSProperties = {
   minHeight: '100vh',

@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import type { GameState, ServerMessage, ClientMessage, GameOverSummary } from '@/types/game'
+import { GameClient, GameRenderer, InputManager } from '@/core'
+import type { GameState, GameOverSummary } from '@/core'
+
+// --- Types ---
 
 type HudState = {
   totalPoints: number
@@ -19,39 +22,24 @@ type GameCanvasProps = {
   playerId?: string
 }
 
+// --- Constants ---
+
 const WS_URL_DEFAULT =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_WS_URL) || 'ws://localhost:3001'
 
 const CANVAS_WIDTH = 800
 const CANVAS_HEIGHT = 600
-const PLAYER_WIDTH = 40
-const PLAYER_HEIGHT = 20
-const PLAYER_Y = 550
-const BULLET_SIZE = 4
 
-const ENEMY_SIZE = 24
-
-const COLORS = {
-  player1: '#00ff88',
-  player2: '#00aaff',
-  playerDead: '#333',
-  bullet: '#ffff00',
-  enemy: '#ff4444',
-  enemyGlow: 'rgba(255, 68, 68, 0.6)',
-  background: '#050508',
-}
+// --- Component ---
 
 export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasProps) {
   const router = useRouter()
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const wsRef = useRef<WebSocket | null>(null)
-  const stateRef = useRef<GameState | null>(null)
-  const playerIdRef = useRef<string | null>(null)
-  const wsInitializedRef = useRef(false) // Track if WS was initialized
+  const clientRef = useRef<GameClient | null>(null)
+  const rendererRef = useRef<GameRenderer | null>(null)
+  const inputRef = useRef<InputManager | null>(null)
 
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'ended'>(
-    'connecting'
-  )
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'ended'>('connecting')
   const [statusText, setStatusText] = useState('Connecting...')
   const [showPauseMenu, setShowPauseMenu] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
@@ -64,354 +52,178 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     gameOverSummary: null,
   })
 
-  // Initialize WebSocket connection once (no useEffect)
-  const effectiveWsUrl = wsUrl || WS_URL_DEFAULT
-  if (!wsInitializedRef.current && matchToken && matchId && playerId && effectiveWsUrl) {
-    wsInitializedRef.current = true
+  // --- Refs for values that InputManager / Renderer need without re-creating ---
+  const isPausedRef = useRef(false)
+  const pausedByMeRef = useRef(false)
 
-    console.log('[WS] Initializing connection...')
-    const params = new URLSearchParams({
-      token: matchToken,
-      matchId,
-      playerId,
-    })
-    const ws = new WebSocket(`${effectiveWsUrl}?${params.toString()}`)
-    wsRef.current = ws
+  // Keep refs in sync
+  useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
+  useEffect(() => { pausedByMeRef.current = pausedByMe }, [pausedByMe])
 
-    ws.onopen = () => {
-      console.log('[WS] Connected')
-      setStatus('connected')
-      setStatusText('Connected')
-    }
+  // --- Toggle pause (used by InputManager callback) ---
+  const togglePause = useCallback(() => {
+    const client = clientRef.current
+    if (!client) return
 
-    ws.onclose = (event) => {
-      console.log('[WS] Disconnected', event.code, event.reason)
-      wsRef.current = null
-      setStatus((prevStatus) => {
-        if (prevStatus === 'ended') return prevStatus
-        return 'error'
-      })
-      setStatusText((prevText) => {
-        if (prevText.includes('Error:')) return prevText
-        return 'Connection closed'
-      })
-    }
-
-    ws.onerror = (err) => {
-      console.error('[WS] Error:', err)
-      setStatus('error')
-      setStatusText('Connection error - check if backend is running')
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const message: ServerMessage = JSON.parse(event.data)
-        console.log('[WS] Received:', message.type)
-
-        switch (message.type) {
-          case 'STATE': {
-            const s = message.state
-            stateRef.current = s
-            setIsPaused(s.paused ?? false)
-            setPausedByMe(s.pausedBy === playerIdRef.current)
-            if (s.paused && s.pausedBy === playerIdRef.current) {
-              setShowPauseMenu(true)
-            }
-            if (!s.paused) {
-              setShowPauseMenu(false)
-            }
-            // Update HUD in React state so header re-renders (ref alone doesn't trigger render)
-            const totalPoints = Object.values(s.points ?? {}).reduce((a, b) => a + b, 0)
-            const lives = s.lives ?? 0
-            const waveNumber = s.waveNumber ?? 0
-            const gameOver = s.gameOver ?? false
-            const gameOverSummary = s.gameOverSummary ?? null
-            setHud((prev) => {
-              const same =
-                prev.totalPoints === totalPoints &&
-                prev.lives === lives &&
-                prev.waveNumber === waveNumber &&
-                prev.gameOver === gameOver
-              if (same && (!gameOver || prev.gameOverSummary)) return prev
-              return { totalPoints, lives, waveNumber, gameOver, gameOverSummary }
-            })
-            break
-          }
-          case 'WELCOME':
-            playerIdRef.current = message.playerId
-            if (matchId) {
-              setStatusText(`Match: ${matchId.slice(-6)}`)
-            } else {
-              setStatusText(`Connected as ${message.playerId.slice(-6)}`)
-            }
-            break
-          case 'ERROR':
-            console.error('[WS] Server error:', message.reason)
-            setStatus('error')
-            setStatusText(`Error: ${message.reason}`)
-            setTimeout(() => {
-              if (wsRef.current) {
-                wsRef.current.close()
-              }
-            }, 2000)
-            break
-          case 'MATCH_ENDED':
-            setStatus('ended')
-            setStatusText(message.reason)
-            setTimeout(() => {
-              sessionStorage.removeItem('matchData')
-              router.push('/')
-            }, 2000)
-            break
-        }
-      } catch {
-        console.warn('[WS] Failed to parse message')
-      }
-    }
-  } else if (!matchToken || !matchId || !playerId || !effectiveWsUrl) {
-    if (!wsInitializedRef.current) {
-      console.error('[WS] Missing match data:', { matchToken, matchId, playerId, wsUrl: effectiveWsUrl })
-      setStatus('error')
-      setStatusText('Missing match data - please join a match')
-    }
-  }
-
-  // Send message to server
-  const send = useCallback((message: ClientMessage) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message))
+    if (isPausedRef.current && pausedByMeRef.current) {
+      client.send({ type: 'RESUME' })
+      setShowPauseMenu(false)
+    } else if (!isPausedRef.current) {
+      client.send({ type: 'PAUSE' })
+      setShowPauseMenu(true)
     }
   }, [])
 
-  // Toggle pause
-  const togglePause = useCallback(() => {
-    if (isPaused && pausedByMe) {
-      send({ type: 'RESUME' })
-      setShowPauseMenu(false)
-    } else if (!isPaused) {
-      send({ type: 'PAUSE' })
-      setShowPauseMenu(true)
-    }
-  }, [isPaused, pausedByMe, send])
-
-  // Exit game
+  // --- Exit game ---
   const exitGame = useCallback(() => {
-    send({ type: 'EXIT' })
+    clientRef.current?.send({ type: 'EXIT' })
     sessionStorage.removeItem('matchData')
     router.push('/')
-  }, [send, router])
+  }, [router])
 
-  // Render game state to canvas
-  const render = useCallback(() => {
-    const canvas = canvasRef.current
-    const ctx = canvas?.getContext('2d')
-    const state = stateRef.current
-
-    if (!ctx || !canvas) return
-
-    // Clear
-    ctx.fillStyle = COLORS.background
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-
-    if (!state) return
-
-    const enemies = state.enemies ?? []
-    const lives = state.lives ?? 0
-    const points = state.points ?? {}
-    const totalPoints = Object.values(points).reduce((a, b) => a + b, 0)
-
-    // Waiting message
-    if (!state.started) {
-      ctx.fillStyle = '#666'
-      ctx.font = '24px JetBrains Mono, monospace'
-      ctx.textAlign = 'center'
-      ctx.fillText('Waiting for opponent...', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2)
-      ctx.font = '14px JetBrains Mono, monospace'
-      ctx.fillText(
-        `${state.players.length}/2 connected`,
-        CANVAS_WIDTH / 2,
-        CANVAS_HEIGHT / 2 + 30
-      )
+  // --- Initialize GameClient ---
+  useEffect(() => {
+    if (!matchToken || !matchId || !playerId) {
+      setStatus('error')
+      setStatusText('Missing match data - please join a match')
       return
     }
 
-    // Draw players
-    state.players.forEach((player, index) => {
-      let color: string
+    const client = new GameClient()
+    clientRef.current = client
 
-      if (!player.alive) {
-        color = COLORS.playerDead
-      } else if (player.id === playerIdRef.current) {
-        color = COLORS.player1
-      } else {
-        color = COLORS.player2
-      }
-
-      // Player body
-      ctx.fillStyle = color
-      ctx.fillRect(
-        player.x - PLAYER_WIDTH / 2,
-        PLAYER_Y - PLAYER_HEIGHT / 2,
-        PLAYER_WIDTH,
-        PLAYER_HEIGHT
-      )
-
-      // Glow effect
-      if (player.alive) {
-        ctx.shadowColor = color
-        ctx.shadowBlur = 15
-        ctx.fillRect(
-          player.x - PLAYER_WIDTH / 2,
-          PLAYER_Y - PLAYER_HEIGHT / 2,
-          PLAYER_WIDTH,
-          PLAYER_HEIGHT
+    client.on('connectionChange', (s) => {
+      if (s === 'connected') {
+        setStatus('connected')
+        setStatusText('Connected')
+      } else if (s === 'error') {
+        setStatus((prev) => (prev === 'ended' ? prev : 'error'))
+        setStatusText((prev) =>
+          prev.includes('Error:') ? prev : 'Connection error - check if backend is running',
         )
-        ctx.shadowBlur = 0
+      } else if (s === 'disconnected') {
+        setStatus((prev) => (prev === 'ended' ? prev : 'error'))
+        setStatusText((prev) => (prev.includes('Error:') ? prev : 'Connection closed'))
       }
-
-      // Player label
-      ctx.fillStyle = '#fff'
-      ctx.font = '10px JetBrains Mono, monospace'
-      ctx.textAlign = 'center'
-      const label = player.id === playerIdRef.current ? 'YOU' : `P${index + 1}`
-      ctx.fillText(label, player.x, PLAYER_Y + 25)
     })
 
-    // Draw bullets
-    ctx.fillStyle = COLORS.bullet
-    ctx.shadowColor = COLORS.bullet
-    ctx.shadowBlur = 10
+    client.on('welcome', (pid, mid) => {
+      if (matchId) {
+        setStatusText(`Match: ${matchId.slice(-6)}`)
+      } else {
+        setStatusText(`Connected as ${pid.slice(-6)}`)
+      }
+    })
 
-    for (const bullet of state.bullets) {
-      ctx.beginPath()
-      ctx.arc(bullet.x, bullet.y, BULLET_SIZE, 0, Math.PI * 2)
-      ctx.fill()
+    client.on('stateUpdate', (state: GameState) => {
+      // Feed state to renderer
+      if (rendererRef.current) {
+        rendererRef.current.state = state
+        rendererRef.current.localPlayerId = client.playerId
+      }
+
+      // Update pause state
+      const paused = state.paused ?? false
+      const byMe = state.pausedBy === client.playerId
+
+      setIsPaused(paused)
+      setPausedByMe(byMe)
+
+      if (paused && byMe) setShowPauseMenu(true)
+      if (!paused) setShowPauseMenu(false)
+
+      // Update InputManager pause flag
+      if (inputRef.current) {
+        inputRef.current.paused = paused
+      }
+
+      // Update HUD
+      const totalPoints = Object.values(state.points ?? {}).reduce((a, b) => a + b, 0)
+      const lives = state.lives ?? 0
+      const waveNumber = state.waveNumber ?? 0
+      const gameOver = state.gameOver ?? false
+      const gameOverSummary = state.gameOverSummary ?? null
+
+      setHud((prev) => {
+        const same =
+          prev.totalPoints === totalPoints &&
+          prev.lives === lives &&
+          prev.waveNumber === waveNumber &&
+          prev.gameOver === gameOver
+        if (same && (!gameOver || prev.gameOverSummary)) return prev
+        return { totalPoints, lives, waveNumber, gameOver, gameOverSummary }
+      })
+    })
+
+    client.on('error', (reason) => {
+      setStatus('error')
+      setStatusText(`Error: ${reason}`)
+    })
+
+    client.on('matchEnded', (reason) => {
+      setStatus('ended')
+      setStatusText(reason)
+      setTimeout(() => {
+        sessionStorage.removeItem('matchData')
+        router.push('/')
+      }, 2000)
+    })
+
+    const effectiveWsUrl = wsUrl || WS_URL_DEFAULT
+    client.connect(effectiveWsUrl, { token: matchToken, matchId, playerId })
+
+    return () => {
+      client.disconnect()
+      client.removeAllListeners()
+      clientRef.current = null
     }
+  }, [matchToken, matchId, playerId, wsUrl, router])
 
-    ctx.shadowBlur = 0
+  // --- Initialize Renderer ---
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
 
-    // Draw enemies
-    const half = ENEMY_SIZE / 2
-    for (const e of enemies) {
-      ctx.fillStyle = COLORS.enemy
-      ctx.shadowColor = COLORS.enemyGlow
-      ctx.shadowBlur = 12
-      ctx.fillRect(e.x - half, e.y - half, ENEMY_SIZE, ENEMY_SIZE)
-      ctx.shadowBlur = 0
+    const renderer = new GameRenderer(canvas, { width: CANVAS_WIDTH, height: CANVAS_HEIGHT })
+    rendererRef.current = renderer
+    renderer.start()
+
+    return () => {
+      renderer.stop()
+      rendererRef.current = null
     }
+  }, [])
 
-    // Draw pause indicator if paused (but not showing menu - e.g. other player paused)
-    if (state.paused && !showPauseMenu) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-      ctx.fillStyle = '#fff'
-      ctx.font = '24px JetBrains Mono, monospace'
-      ctx.textAlign = 'center'
-      ctx.fillText('PAUSED', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2)
-      ctx.font = '14px JetBrains Mono, monospace'
-      ctx.fillText('Waiting for other player...', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30)
+  // Keep renderer overlay flag in sync
+  useEffect(() => {
+    if (rendererRef.current) {
+      rendererRef.current.showPauseOverlay = showPauseMenu
     }
   }, [showPauseMenu])
 
-  // Cleanup WebSocket on unmount (minimal useEffect only for cleanup)
+  // --- Initialize InputManager ---
   useEffect(() => {
-    return () => {
-      console.log('[WS] Cleaning up connection on unmount')
-      if (wsRef.current) {
-        wsRef.current.close()
-        wsRef.current = null
-      }
-      wsInitializedRef.current = false
+    const input = new InputManager({
+      onMove: (dir) => clientRef.current?.send({ type: 'MOVE', dir }),
+      onStop: () => clientRef.current?.send({ type: 'STOP' }),
+      onShoot: () => clientRef.current?.send({ type: 'SHOOT' }),
+      onPause: () => togglePause(),
+    })
+    inputRef.current = input
+    input.enableKeyboard()
+
+    // Enable touch on canvas if available
+    if (canvasRef.current) {
+      input.enableTouch(canvasRef.current)
     }
-  }, []) // Empty deps - only cleanup on unmount
-
-  // Input handling
-  useEffect(() => {
-    let leftPressed = false
-    let rightPressed = false
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape to toggle pause
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        togglePause()
-        return
-      }
-
-      // Don't process game inputs if paused
-      if (isPaused) return
-
-      if (['ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
-        e.preventDefault()
-      }
-
-      switch (e.key) {
-        case 'ArrowLeft':
-          if (!leftPressed) {
-            leftPressed = true
-            send({ type: 'MOVE', dir: -1 })
-          }
-          break
-        case 'ArrowRight':
-          if (!rightPressed) {
-            rightPressed = true
-            send({ type: 'MOVE', dir: 1 })
-          }
-          break
-        case ' ':
-          send({ type: 'SHOOT' })
-          break
-      }
-    }
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      // Don't process game inputs if paused
-      if (isPaused) return
-
-      switch (e.key) {
-        case 'ArrowLeft':
-          leftPressed = false
-          if (rightPressed) {
-            send({ type: 'MOVE', dir: 1 })
-          } else {
-            send({ type: 'STOP' })
-          }
-          break
-        case 'ArrowRight':
-          rightPressed = false
-          if (leftPressed) {
-            send({ type: 'MOVE', dir: -1 })
-          } else {
-            send({ type: 'STOP' })
-          }
-          break
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
+      input.destroy()
+      inputRef.current = null
     }
-  }, [send, isPaused, togglePause])
+  }, [togglePause])
 
-  // Render loop
-  useEffect(() => {
-    let animationId: number
-
-    const loop = () => {
-      render()
-      animationId = requestAnimationFrame(loop)
-    }
-
-    loop()
-
-    return () => {
-      cancelAnimationFrame(animationId)
-    }
-  }, [render])
+  // --- Render ---
 
   const { totalPoints, lives, gameOver, gameOverSummary } = hud
 
@@ -429,29 +241,20 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
       </div>
 
       <div style={canvasContainerStyle}>
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          style={canvasStyle}
-        />
+        <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} style={canvasStyle} />
 
         {/* Pause Menu Overlay */}
         {showPauseMenu && (
           <div style={overlayStyle}>
             <div style={menuStyle}>
               <h2 style={menuTitleStyle}>PAUSED</h2>
-              <button onClick={togglePause} style={menuButtonStyle}>
-                Resume
-              </button>
-              <button onClick={exitGame} style={exitButtonStyle}>
-                Exit Game
-              </button>
+              <button onClick={togglePause} style={menuButtonStyle}>Resume</button>
+              <button onClick={exitGame} style={exitButtonStyle}>Exit Game</button>
             </div>
           </div>
         )}
 
-        {/* Game Over Overlay (no lives left) */}
+        {/* Game Over Overlay */}
         {gameOver && gameOverSummary && (
           <div style={overlayStyle}>
             <div style={menuStyle}>
@@ -474,15 +277,13 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
                 ))}
               </div>
               <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
-                <button onClick={exitGame} style={menuButtonStyle}>
-                  Return to menu
-                </button>
+                <button onClick={exitGame} style={menuButtonStyle}>Return to menu</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Match Ended Overlay (disconnect / exit) */}
+        {/* Match Ended Overlay */}
         {status === 'ended' && !gameOver && (
           <div style={overlayStyle}>
             <div style={menuStyle}>
@@ -518,6 +319,8 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     </div>
   )
 }
+
+// --- Styles (unchanged) ---
 
 const containerStyle: React.CSSProperties = {
   minHeight: '100vh',
@@ -594,8 +397,7 @@ const canvasContainerStyle: React.CSSProperties = {
 
 const canvasStyle: React.CSSProperties = {
   border: '2px solid #00ff88',
-  boxShadow:
-    '0 0 30px rgba(0, 255, 136, 0.3), inset 0 0 60px rgba(0, 0, 0, 0.5)',
+  boxShadow: '0 0 30px rgba(0, 255, 136, 0.3), inset 0 0 60px rgba(0, 0, 0, 0.5)',
   background: '#050508',
   display: 'block',
 }
