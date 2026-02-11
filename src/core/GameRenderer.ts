@@ -35,6 +35,12 @@ const DEFAULT_COLORS: RendererColors = {
   background: '#050508',
 }
 
+// Additional colors not in RendererColors (internal)
+const PATROL_COLOR = '#ff44ff'
+const PATROL_GLOW = 'rgba(255, 68, 255, 0.6)'
+const ENEMY_BULLET_COLOR = '#ff6644'
+const ENEMY_BULLET_GLOW = 'rgba(255, 102, 68, 0.5)'
+
 // --- Constants ---
 
 const PLAYER_WIDTH = 40
@@ -42,7 +48,10 @@ const PLAYER_HEIGHT = 26
 const PLAYER_Y = 550
 const BULLET_WIDTH = 6
 const BULLET_HEIGHT = 14
+const ENEMY_BULLET_WIDTH = 6
+const ENEMY_BULLET_HEIGHT = 10
 const ENEMY_SIZE = 28
+const PATROL_SIZE = 32
 
 // Enemy animation: alternate frames every N ms
 const ENEMY_ANIM_INTERVAL = 600
@@ -88,8 +97,10 @@ export class GameRenderer {
       player1: this.colors.player1,
       player2: this.colors.player2,
       playerDead: this.colors.playerDead,
-      enemy: this.colors.enemy,
+      enemyStatic: this.colors.enemy,
+      enemyPatrol: PATROL_COLOR,
       bullet: this.colors.bullet,
+      enemyBullet: ENEMY_BULLET_COLOR,
     })
 
     // Generate background stars
@@ -129,6 +140,9 @@ export class GameRenderer {
 
     // Draw enemies
     this.renderEnemies(state)
+
+    // Draw enemy bullets
+    this.renderEnemyBullets(state)
 
     // Draw pause indicator (when other player paused and we're not showing our own menu)
     if (state.paused && !this.showPauseOverlay) {
@@ -189,16 +203,58 @@ export class GameRenderer {
 
   private renderPlayers(state: GameState): void {
     const ctx = this.ctx
+    const now = performance.now()
 
     // Disable smoothing for crisp pixel art
     ctx.imageSmoothingEnabled = false
 
     state.players.forEach((player, index) => {
-      let sprite: HTMLCanvasElement
+      const isMe = player.id === this.localPlayerId
+      const isInvincible = player.invincibleTimer > 0
 
+      // --- Dead player: show respawn countdown ---
       if (!player.alive) {
-        sprite = this.sprites.playerDead
-      } else if (player.id === this.localPlayerId) {
+        // Draw ghost sprite (faded)
+        const ghostX = isMe ? 200 : 600 // show at spawn position
+        const drawX = ghostX - PLAYER_WIDTH / 2
+        const drawY = PLAYER_Y - PLAYER_HEIGHT / 2
+
+        if (player.lives > 0) {
+          // Faded ghost sprite
+          ctx.globalAlpha = 0.25
+          ctx.drawImage(this.sprites.playerDead, drawX, drawY, PLAYER_WIDTH, PLAYER_HEIGHT)
+          ctx.globalAlpha = 1.0
+
+          // Respawn countdown text
+          const seconds = Math.ceil(player.respawnTimer / 30) // 30 ticks per second
+          ctx.fillStyle = '#ffaa00'
+          ctx.font = '14px JetBrains Mono, monospace'
+          ctx.textAlign = 'center'
+          ctx.fillText(`${seconds}s`, ghostX, PLAYER_Y - PLAYER_HEIGHT / 2 - 8)
+        } else {
+          // Permanently dead — dim "X"
+          ctx.globalAlpha = 0.15
+          ctx.drawImage(this.sprites.playerDead, drawX, drawY, PLAYER_WIDTH, PLAYER_HEIGHT)
+          ctx.globalAlpha = 1.0
+
+          ctx.fillStyle = '#ff4444'
+          ctx.font = '16px JetBrains Mono, monospace'
+          ctx.textAlign = 'center'
+          ctx.fillText('DEAD', ghostX, PLAYER_Y - PLAYER_HEIGHT / 2 - 8)
+        }
+
+        // Player label + lives below
+        ctx.fillStyle = '#666'
+        ctx.font = '10px JetBrains Mono, monospace'
+        ctx.textAlign = 'center'
+        const label = isMe ? 'YOU' : `P${index + 1}`
+        ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, ghostX, PLAYER_Y + PLAYER_HEIGHT / 2 + 14)
+        return
+      }
+
+      // --- Alive player ---
+      let sprite: HTMLCanvasElement
+      if (isMe) {
         sprite = this.sprites.player1
       } else {
         sprite = this.sprites.player2
@@ -207,24 +263,31 @@ export class GameRenderer {
       const drawX = player.x - PLAYER_WIDTH / 2
       const drawY = PLAYER_Y - PLAYER_HEIGHT / 2
 
-      // Glow effect for alive players
-      if (player.alive) {
-        const color = player.id === this.localPlayerId ? this.colors.player1 : this.colors.player2
-        ctx.shadowColor = color
-        ctx.shadowBlur = 18
-        ctx.drawImage(sprite, drawX, drawY, PLAYER_WIDTH, PLAYER_HEIGHT)
-        ctx.shadowBlur = 0
+      // Invincibility: blink effect (flash every ~100ms)
+      if (isInvincible) {
+        const blink = Math.floor(now / 100) % 2 === 0
+        ctx.globalAlpha = blink ? 1.0 : 0.3
       }
+
+      // Glow effect
+      const color = isMe ? this.colors.player1 : this.colors.player2
+      ctx.shadowColor = isInvincible ? '#ffffff' : color
+      ctx.shadowBlur = isInvincible ? 24 : 18
+      ctx.drawImage(sprite, drawX, drawY, PLAYER_WIDTH, PLAYER_HEIGHT)
+      ctx.shadowBlur = 0
 
       // Draw sprite (on top of glow)
       ctx.drawImage(sprite, drawX, drawY, PLAYER_WIDTH, PLAYER_HEIGHT)
 
-      // Player label
+      // Reset alpha
+      ctx.globalAlpha = 1.0
+
+      // Player label + lives
       ctx.fillStyle = '#fff'
       ctx.font = '10px JetBrains Mono, monospace'
       ctx.textAlign = 'center'
-      const label = player.id === this.localPlayerId ? 'YOU' : `P${index + 1}`
-      ctx.fillText(label, player.x, PLAYER_Y + PLAYER_HEIGHT / 2 + 14)
+      const label = isMe ? 'YOU' : `P${index + 1}`
+      ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, player.x, PLAYER_Y + PLAYER_HEIGHT / 2 + 14)
     })
 
     ctx.imageSmoothingEnabled = true
@@ -256,27 +319,61 @@ export class GameRenderer {
   private renderEnemies(state: GameState): void {
     const ctx = this.ctx
     const enemies = state.enemies ?? []
-    const half = ENEMY_SIZE / 2
 
     // Pick animation frame based on time
     const elapsed = performance.now() - this.startTime
     const frame = Math.floor(elapsed / ENEMY_ANIM_INTERVAL) % 2
-    const sprite = frame === 0 ? this.sprites.enemyA : this.sprites.enemyB
 
     // Disable smoothing for crisp pixel art
     ctx.imageSmoothingEnabled = false
 
     for (const e of enemies) {
+      const isPatrol = e.type === 'patrol'
+      const size = isPatrol ? PATROL_SIZE : ENEMY_SIZE
+      const half = size / 2
+      const glowColor = isPatrol ? PATROL_GLOW : this.colors.enemyGlow
+
+      // Pick sprite based on type + frame
+      let sprite: HTMLCanvasElement
+      if (isPatrol) {
+        sprite = frame === 0 ? this.sprites.patrolA : this.sprites.patrolB
+      } else {
+        sprite = frame === 0 ? this.sprites.staticA : this.sprites.staticB
+      }
+
       // Glow
-      ctx.shadowColor = this.colors.enemyGlow
+      ctx.shadowColor = glowColor
       ctx.shadowBlur = 14
-      ctx.drawImage(sprite, e.x - half, e.y - half, ENEMY_SIZE, ENEMY_SIZE)
+      ctx.drawImage(sprite, e.x - half, e.y - half, size, size)
       ctx.shadowBlur = 0
 
       // Draw on top (sharper)
-      ctx.drawImage(sprite, e.x - half, e.y - half, ENEMY_SIZE, ENEMY_SIZE)
+      ctx.drawImage(sprite, e.x - half, e.y - half, size, size)
     }
 
+    ctx.imageSmoothingEnabled = true
+  }
+
+  private renderEnemyBullets(state: GameState): void {
+    const ctx = this.ctx
+    const bullets = state.enemyBullets ?? []
+    if (bullets.length === 0) return
+
+    ctx.imageSmoothingEnabled = false
+    ctx.shadowColor = ENEMY_BULLET_GLOW
+    ctx.shadowBlur = 8
+
+    for (const b of bullets) {
+      ctx.drawImage(
+        this.sprites.enemyBullet,
+        b.x - ENEMY_BULLET_WIDTH / 2,
+        b.y - ENEMY_BULLET_HEIGHT / 2,
+        ENEMY_BULLET_WIDTH,
+        ENEMY_BULLET_HEIGHT,
+      )
+    }
+
+    ctx.shadowBlur = 0
     ctx.imageSmoothingEnabled = true
   }
 

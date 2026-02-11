@@ -9,6 +9,9 @@ export type Player = {
   id: string
   x: number
   alive: boolean
+  lives: number
+  respawnTimer: number     // ticks until respawn (0 = not respawning)
+  invincibleTimer: number  // ticks of invincibility remaining (0 = vulnerable)
 }
 
 export type Bullet = {
@@ -20,6 +23,14 @@ export type Bullet = {
 export type Enemy = {
   x: number
   y: number
+  type: 'static' | 'patrol'
+}
+
+export type EnemyBullet = {
+  x: number
+  y: number
+  dx: number
+  dy: number
 }
 
 export type PlayerScore = {
@@ -35,6 +46,7 @@ export type GameOverSummary = {
 export type GameState = {
   players: Player[]
   bullets: Bullet[]
+  enemyBullets: EnemyBullet[]
   enemies: Enemy[]
   lives: number
   points: Record<string, number>
@@ -53,8 +65,9 @@ export type StateMessage = { type: 'STATE'; state: GameState }
 export type WelcomeMessage = { type: 'WELCOME'; playerId: string; matchId: string }
 export type ErrorMessage = { type: 'ERROR'; reason: string }
 export type MatchEndedMessage = { type: 'MATCH_ENDED'; reason: string }
+export type PongMessage = { type: 'PONG'; timestamp: number }
 
-export type ServerMessage = StateMessage | WelcomeMessage | ErrorMessage | MatchEndedMessage
+export type ServerMessage = StateMessage | WelcomeMessage | ErrorMessage | MatchEndedMessage | PongMessage
 
 // === CLIENT → SERVER MESSAGES ===
 
@@ -64,6 +77,7 @@ export type ShootMessage = { type: 'SHOOT' }
 export type PauseMessage = { type: 'PAUSE' }
 export type ResumeMessage = { type: 'RESUME' }
 export type ExitMessage = { type: 'EXIT' }
+export type PingMessage = { type: 'PING'; timestamp: number }
 
 export type ClientMessage =
   | MoveMessage
@@ -72,6 +86,7 @@ export type ClientMessage =
   | PauseMessage
   | ResumeMessage
   | ExitMessage
+  | PingMessage
 
 // === CONNECTION ===
 

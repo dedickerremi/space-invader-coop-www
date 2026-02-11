@@ -11,6 +11,10 @@ import type {
   ConnectionParams,
 } from './types'
 
+// --- Ping configuration ---
+
+const PING_INTERVAL_MS = 2000 // send a ping every 2 seconds
+
 // --- Event types emitted by GameClient ---
 
 export type GameClientEventMap = {
@@ -19,6 +23,7 @@ export type GameClientEventMap = {
   error: (reason: string) => void
   matchEnded: (reason: string) => void
   connectionChange: (status: ConnectionStatus) => void
+  pingUpdate: (pingMs: number) => void
 }
 
 // --- GameClient class ---
@@ -29,6 +34,8 @@ export class GameClient {
   private listeners = new Map<keyof GameClientEventMap, Set<(...args: any[]) => void>>()
   private _status: ConnectionStatus = 'disconnected'
   private _playerId: string | null = null
+  private _pingMs: number = 0
+  private _pingInterval: ReturnType<typeof setInterval> | null = null
 
   /** Current connection status */
   get status(): ConnectionStatus {
@@ -43,6 +50,11 @@ export class GameClient {
   /** Whether the WebSocket is open and ready to send */
   get connected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN
+  }
+
+  /** Current ping/latency in milliseconds (round-trip time) */
+  get pingMs(): number {
+    return this._pingMs
   }
 
   /**
@@ -67,9 +79,11 @@ export class GameClient {
 
     ws.onopen = () => {
       this.setStatus('connected')
+      this.startPing()
     }
 
     ws.onclose = () => {
+      this.stopPing()
       this.ws = null
       // Don't overwrite a more specific status (e.g. 'error')
       if (this._status === 'connected' || this._status === 'connecting') {
@@ -99,6 +113,7 @@ export class GameClient {
    * Disconnect from the game server.
    */
   disconnect(): void {
+    this.stopPing()
     if (this.ws) {
       this.ws.onopen = null
       this.ws.onclose = null
@@ -168,9 +183,34 @@ export class GameClient {
         case 'MATCH_ENDED':
           this.emit('matchEnded', message.reason)
           break
+
+        case 'PONG':
+          this._pingMs = Math.round(performance.now() - message.timestamp)
+          this.emit('pingUpdate', this._pingMs)
+          break
       }
     } catch {
       // Ignore unparseable messages
+    }
+  }
+
+  private startPing(): void {
+    this.stopPing()
+    // Send first ping immediately
+    this.sendPing()
+    this._pingInterval = setInterval(() => this.sendPing(), PING_INTERVAL_MS)
+  }
+
+  private stopPing(): void {
+    if (this._pingInterval !== null) {
+      clearInterval(this._pingInterval)
+      this._pingInterval = null
+    }
+  }
+
+  private sendPing(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'PING', timestamp: performance.now() }))
     }
   }
 

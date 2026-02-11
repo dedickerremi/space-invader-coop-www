@@ -7,9 +7,17 @@ import type { GameState, GameOverSummary } from '@/core'
 
 // --- Types ---
 
+type PlayerHud = {
+  id: string
+  lives: number
+  alive: boolean
+  respawnTimer: number
+}
+
 type HudState = {
   totalPoints: number
   lives: number
+  players: PlayerHud[]
   waveNumber: number
   gameOver: boolean
   gameOverSummary: GameOverSummary | null
@@ -44,9 +52,11 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
   const [showPauseMenu, setShowPauseMenu] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [pausedByMe, setPausedByMe] = useState(false)
+  const [pingMs, setPingMs] = useState(0)
   const [hud, setHud] = useState<HudState>({
     totalPoints: 0,
     lives: 0,
+    players: [],
     waveNumber: 0,
     gameOver: false,
     gameOverSummary: null,
@@ -143,6 +153,12 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
       const waveNumber = state.waveNumber ?? 0
       const gameOver = state.gameOver ?? false
       const gameOverSummary = state.gameOverSummary ?? null
+      const players: PlayerHud[] = (state.players ?? []).map((p) => ({
+        id: p.id,
+        lives: p.lives ?? 0,
+        alive: p.alive,
+        respawnTimer: p.respawnTimer ?? 0,
+      }))
 
       setHud((prev) => {
         const same =
@@ -151,8 +167,12 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
           prev.waveNumber === waveNumber &&
           prev.gameOver === gameOver
         if (same && (!gameOver || prev.gameOverSummary)) return prev
-        return { totalPoints, lives, waveNumber, gameOver, gameOverSummary }
+        return { totalPoints, lives, players, waveNumber, gameOver, gameOverSummary }
       })
+    })
+
+    client.on('pingUpdate', (ms) => {
+      setPingMs(ms)
     })
 
     client.on('error', (reason) => {
@@ -225,7 +245,15 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
 
   // --- Render ---
 
-  const { totalPoints, lives, gameOver, gameOverSummary } = hud
+  const { totalPoints, players: hudPlayers, gameOver, gameOverSummary } = hud
+
+  // Build per-player lives display
+  const livesDisplay = hudPlayers.map((p) => {
+    const isMe = p.id === playerId
+    const label = isMe ? 'YOU' : 'P2'
+    const hearts = '♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, 3 - p.lives))
+    return { label, hearts, isMe, alive: p.alive }
+  })
 
   return (
     <div style={containerStyle}>
@@ -233,7 +261,18 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
         <h1 style={titleStyle}>Space Invaders</h1>
         <div style={scoreLivesStyle}>
           <span style={scoreStyle}>Score: {totalPoints}</span>
-          <span style={livesStyle}>Lives: {lives}</span>
+          {livesDisplay.map((p) => (
+            <span
+              key={p.label}
+              style={{
+                color: p.isMe ? '#00ff88' : '#00aaff',
+                opacity: p.alive ? 1 : 0.5,
+              }}
+            >
+              {p.label}: {p.hearts}
+            </span>
+          ))}
+          <span style={pingStyle}>{pingMs}ms</span>
         </div>
         <button onClick={togglePause} style={pauseButtonStyle} title="Pause (Esc)" disabled={gameOver}>
           ⏸
@@ -357,6 +396,7 @@ const scoreLivesStyle: React.CSSProperties = {
 }
 const scoreStyle: React.CSSProperties = { color: '#00ff88' }
 const livesStyle: React.CSSProperties = { color: '#ffaa00' }
+const pingStyle: React.CSSProperties = { color: '#666', fontSize: '0.75rem' }
 
 const summaryTableStyle: React.CSSProperties = {
   display: 'flex',

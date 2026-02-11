@@ -15,6 +15,7 @@ export type {
   Player,
   Bullet,
   Enemy,
+  EnemyBullet,
   PlayerScore,
   GameOverSummary,
   GameState,
