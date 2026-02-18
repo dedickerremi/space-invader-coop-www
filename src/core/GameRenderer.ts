@@ -22,6 +22,8 @@ export type RendererColors = {
 export type RendererConfig = {
   width?: number
   height?: number
+  /** For sharp rendering on retina; logical size is unchanged */
+  devicePixelRatio?: number
   colors?: Partial<RendererColors>
 }
 
@@ -80,16 +82,23 @@ export class GameRenderer {
   /** Whether the pause menu is shown (affects overlay rendering) */
   showPauseOverlay = false
 
+  /** Timestamp until which to show a subtle hit/kill flash (0 = off) */
+  hitFlashUntil = 0
+
   constructor(canvas: HTMLCanvasElement, config?: RendererConfig) {
     this.width = config?.width ?? 800
     this.height = config?.height ?? 600
     this.colors = { ...DEFAULT_COLORS, ...config?.colors }
+    const dpr = config?.devicePixelRatio ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1)
 
-    canvas.width = this.width
-    canvas.height = this.height
+    canvas.width = this.width * dpr
+    canvas.height = this.height * dpr
+    canvas.style.width = `${this.width}px`
+    canvas.style.height = `${this.height}px`
 
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Canvas 2D context not available')
+    ctx.scale(dpr, dpr)
     this.ctx = ctx
 
     // Generate sprites
@@ -147,6 +156,16 @@ export class GameRenderer {
     // Draw pause indicator (when other player paused and we're not showing our own menu)
     if (state.paused && !this.showPauseOverlay) {
       this.renderPausedByOther()
+    }
+
+    // Subtle hit/kill flash (fade out over ~80ms)
+    const now = performance.now()
+    if (this.hitFlashUntil > 0 && now < this.hitFlashUntil) {
+      const alpha = 0.15 * ((this.hitFlashUntil - now) / 80)
+      if (alpha > 0) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`
+        ctx.fillRect(0, 0, this.width, this.height)
+      }
     }
   }
 

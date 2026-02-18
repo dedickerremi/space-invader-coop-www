@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { GameClient, GameRenderer, InputManager } from '@/core'
+import {
+  GameClient,
+  GameRenderer,
+  InputBridge,
+  DesktopInputAdapter,
+  MobileInputAdapter,
+  createMobileMovementConverter,
+} from '@/core'
 import type { GameState, GameOverSummary } from '@/core'
 
 // --- Types ---
@@ -38,14 +45,21 @@ const WS_URL_DEFAULT =
 const CANVAS_WIDTH = 800
 const CANVAS_HEIGHT = 600
 
+/** Hit flash duration (ms); optional vibration on kill */
+const HIT_FEEDBACK_MS = 80
+const VIBRATE_MS = 50
+
 // --- Component ---
 
 export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasProps) {
   const router = useRouter()
+  const gameViewContainerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const clientRef = useRef<GameClient | null>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
-  const inputRef = useRef<InputManager | null>(null)
+  const bridgeRef = useRef<InputBridge | null>(null)
+  const adapterRef = useRef<DesktopInputAdapter | MobileInputAdapter | null>(null)
+  const lastKillsRef = useRef<number>(0)
 
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'ended'>('connecting')
   const [statusText, setStatusText] = useState('Connecting...')
@@ -53,6 +67,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
   const [isPaused, setIsPaused] = useState(false)
   const [pausedByMe, setPausedByMe] = useState(false)
   const [pingMs, setPingMs] = useState(0)
+  const [isMobile, setIsMobile] = useState(false)
   const [hud, setHud] = useState<HudState>({
     totalPoints: 0,
     lives: 0,
@@ -62,7 +77,19 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     gameOverSummary: null,
   })
 
-  // --- Refs for values that InputManager / Renderer need without re-creating ---
+  // Mobile/tablet: touch or viewport ≤ 1024px → slide + auto-fire
+  useEffect(() => {
+    const check = () =>
+      setIsMobile(
+        typeof window !== 'undefined' &&
+          ('ontouchstart' in window || window.innerWidth <= 1024),
+      )
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // --- Refs for bridge / renderer ---
   const isPausedRef = useRef(false)
   const pausedByMeRef = useRef(false)
 
@@ -70,7 +97,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
   useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
   useEffect(() => { pausedByMeRef.current = pausedByMe }, [pausedByMe])
 
-  // --- Toggle pause (used by InputManager callback) ---
+  // --- Toggle pause (used by input bridge callback) ---
   const togglePause = useCallback(() => {
     const client = clientRef.current
     if (!client) return
@@ -126,25 +153,37 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     })
 
     client.on('stateUpdate', (state: GameState) => {
-      // Feed state to renderer
-      if (rendererRef.current) {
-        rendererRef.current.state = state
-        rendererRef.current.localPlayerId = client.playerId
-      }
-
-      // Update pause state
       const paused = state.paused ?? false
       const byMe = state.pausedBy === client.playerId
+      bridgeRef.current?.setPaused(paused)
 
       setIsPaused(paused)
       setPausedByMe(byMe)
-
       if (paused && byMe) setShowPauseMenu(true)
       if (!paused) setShowPauseMenu(false)
 
-      // Update InputManager pause flag
-      if (inputRef.current) {
-        inputRef.current.paused = paused
+      // Client-side prediction: bridge.tick(serverX) → predicted X for local player
+      const localPlayer = state.players.find((p) => p.id === client.playerId)
+      const serverX = localPlayer?.x ?? 400
+      const predictedX = bridgeRef.current?.tick(serverX) ?? serverX
+      const stateForRender: GameState = {
+        ...state,
+        players: state.players.map((p) =>
+          p.id === client.playerId ? { ...p, x: predictedX } : p,
+        ),
+      }
+
+      if (rendererRef.current) {
+        rendererRef.current.state = stateForRender
+        rendererRef.current.localPlayerId = client.playerId
+      }
+
+      // Hit feedback: kills increased → flash + optional vibration
+      const kills = state.kills?.[client.playerId ?? ''] ?? 0
+      if (kills > lastKillsRef.current) {
+        lastKillsRef.current = kills
+        if (rendererRef.current) rendererRef.current.hitFlashUntil = performance.now() + HIT_FEEDBACK_MS
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(VIBRATE_MS)
       }
 
       // Update HUD
@@ -189,6 +228,14 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
       }, 2000)
     })
 
+    const bridge = new InputBridge(
+      (dir) => client.send({ type: 'MOVE', dir }),
+      () => client.send({ type: 'STOP' }),
+      () => client.send({ type: 'SHOOT' }),
+      () => togglePause(),
+    )
+    bridgeRef.current = bridge
+
     const effectiveWsUrl = wsUrl || WS_URL_DEFAULT
     client.connect(effectiveWsUrl, { token: matchToken, matchId, playerId })
 
@@ -196,8 +243,9 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
       client.disconnect()
       client.removeAllListeners()
       clientRef.current = null
+      bridgeRef.current = null
     }
-  }, [matchToken, matchId, playerId, wsUrl, router])
+  }, [matchToken, matchId, playerId, wsUrl, router, togglePause])
 
   // --- Initialize Renderer ---
   useEffect(() => {
@@ -221,27 +269,33 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     }
   }, [showPauseMenu])
 
-  // --- Initialize InputManager ---
+  // --- Initialize input adapter (Desktop or Mobile) ---
   useEffect(() => {
-    const input = new InputManager({
-      onMove: (dir) => clientRef.current?.send({ type: 'MOVE', dir }),
-      onStop: () => clientRef.current?.send({ type: 'STOP' }),
-      onShoot: () => clientRef.current?.send({ type: 'SHOOT' }),
-      onPause: () => togglePause(),
-    })
-    inputRef.current = input
-    input.enableKeyboard()
+    const bridge = bridgeRef.current
+    if (!bridge) return
 
-    // Enable touch on canvas if available
-    if (canvasRef.current) {
-      input.enableTouch(canvasRef.current)
+    const container = gameViewContainerRef.current
+    if (isMobile && container) {
+      const getRect = () => {
+        const r = container.getBoundingClientRect()
+        return { width: r.width, height: r.height, left: r.left, top: r.top }
+      }
+      const pixelToLogical = createMobileMovementConverter(getRect)
+      const adapter = new MobileInputAdapter(bridge, container, pixelToLogical)
+      adapterRef.current = adapter
+      return () => {
+        adapter.destroy()
+        adapterRef.current = null
+      }
+    } else {
+      const adapter = new DesktopInputAdapter(bridge, window)
+      adapterRef.current = adapter
+      return () => {
+        adapter.destroy()
+        adapterRef.current = null
+      }
     }
-
-    return () => {
-      input.destroy()
-      inputRef.current = null
-    }
-  }, [togglePause])
+  }, [isMobile])
 
   // --- Render ---
 
@@ -279,8 +333,22 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
         </button>
       </div>
 
-      <div style={canvasContainerStyle}>
-        <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} style={canvasStyle} />
+      <div
+        ref={gameViewContainerRef}
+        style={{
+          ...canvasContainerStyle,
+          ...(isMobile ? { width: '100%' } : {}),
+        }}
+      >
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          style={{
+            ...canvasStyle,
+            ...(isMobile ? { width: '100%', height: 'auto', maxWidth: '100%' } : {}),
+          }}
+        />
 
         {/* Pause Menu Overlay */}
         {showPauseMenu && (
@@ -348,13 +416,20 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
         {statusText}
       </div>
 
-      <div style={controlsStyle}>
-        <kbd style={kbdStyle}>←</kbd> <kbd style={kbdStyle}>→</kbd> Move
-        &nbsp;&nbsp;
-        <kbd style={kbdStyle}>Space</kbd> Shoot
-        &nbsp;&nbsp;
-        <kbd style={kbdStyle}>Esc</kbd> Pause
-      </div>
+      {!isMobile && (
+        <div style={controlsStyle}>
+          <kbd style={kbdStyle}>←</kbd> <kbd style={kbdStyle}>→</kbd> Move
+          &nbsp;&nbsp;
+          <kbd style={kbdStyle}>Space</kbd> Shoot
+          &nbsp;&nbsp;
+          <kbd style={kbdStyle}>Esc</kbd> Pause
+        </div>
+      )}
+      {isMobile && (
+        <div style={controlsStyle}>
+          Touch bottom 40% to move • Auto-fire • Two-finger tap to pause
+        </div>
+      )}
     </div>
   )
 }
@@ -433,6 +508,7 @@ const pauseButtonStyle: React.CSSProperties = {
 
 const canvasContainerStyle: React.CSSProperties = {
   position: 'relative',
+  maxWidth: '100%',
 }
 
 const canvasStyle: React.CSSProperties = {

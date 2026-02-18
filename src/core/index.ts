@@ -6,8 +6,26 @@
 // Classes
 export { GameClient } from './GameClient'
 export { GameRenderer } from './GameRenderer'
-export { InputManager } from './InputManager'
 export { MatchmakingClient } from './MatchmakingClient'
+
+// World (logical dimensions)
+export { LOGICAL_WIDTH, LOGICAL_HEIGHT, PLAYER_X_MIN, PLAYER_X_MAX, PLAYER_Y, clampPlayerX } from './world'
+
+// Viewport (pixel ↔ logical)
+export {
+  getScaleAndOffset,
+  screenToLogical,
+  createMobileMovementConverter,
+} from './viewport'
+export type { ViewportRect } from './viewport'
+
+// Input layer (adapters + bridge)
+export {
+  InputBridge,
+  DesktopInputAdapter,
+  MobileInputAdapter,
+} from './input'
+export type { IGameController, GameCommand, SendMove, SendStop, SendFire, PixelToLogical } from './input'
 
 // Types — re-export everything for consumers
 export type {
@@ -47,5 +65,4 @@ export { createSpriteSheet, generateStars } from './Sprites'
 // Class-specific types
 export type { GameClientEventMap } from './GameClient'
 export type { RendererColors, RendererConfig } from './GameRenderer'
-export type { InputCallbacks } from './InputManager'
 export type { SpriteSheet, SpriteColors, Star } from './Sprites'
