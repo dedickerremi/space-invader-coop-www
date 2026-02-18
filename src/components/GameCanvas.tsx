@@ -54,6 +54,7 @@ const VIBRATE_MS = 50
 export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasProps) {
   const router = useRouter()
   const gameViewContainerRef = useRef<HTMLDivElement>(null)
+  const canvasWrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const clientRef = useRef<GameClient | null>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
@@ -270,18 +271,19 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
   }, [showPauseMenu])
 
   // --- Initialize input adapter (Desktop or Mobile) ---
+  // On mobile we use the canvas wrapper so the slide zone is ON the canvas, not below it.
   useEffect(() => {
     const bridge = bridgeRef.current
     if (!bridge) return
 
-    const container = gameViewContainerRef.current
-    if (isMobile && container) {
+    const touchTarget = isMobile ? canvasWrapperRef.current : null
+    if (isMobile && touchTarget) {
       const getRect = () => {
-        const r = container.getBoundingClientRect()
+        const r = touchTarget.getBoundingClientRect()
         return { width: r.width, height: r.height, left: r.left, top: r.top }
       }
       const pixelToLogical = createMobileMovementConverter(getRect)
-      const adapter = new MobileInputAdapter(bridge, container, pixelToLogical)
+      const adapter = new MobileInputAdapter(bridge, touchTarget, pixelToLogical)
       adapterRef.current = adapter
       return () => {
         adapter.destroy()
@@ -311,8 +313,10 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
 
   return (
     <div style={containerStyle}>
-      <div style={headerStyle}>
-        <h1 style={titleStyle}>Space Invaders</h1>
+      <div style={{ ...headerStyle, flexShrink: 0 }}>
+        <h1 style={{ ...titleStyle, ...(isMobile ? { fontSize: '1rem', letterSpacing: '0.15em' } : {}) }}>
+          Space Invaders
+        </h1>
         <div style={scoreLivesStyle}>
           <span style={scoreStyle}>Score: {totalPoints}</span>
           {livesDisplay.map((p) => (
@@ -337,18 +341,42 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
         ref={gameViewContainerRef}
         style={{
           ...canvasContainerStyle,
-          ...(isMobile ? { width: '100%' } : {}),
+          ...(isMobile
+            ? {
+                flex: 1,
+                minHeight: 0,
+                width: '100%',
+                overflow: 'hidden',
+                touchAction: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }
+            : {}),
         }}
       >
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          style={{
-            ...canvasStyle,
-            ...(isMobile ? { width: '100%', height: 'auto', maxWidth: '100%' } : {}),
-          }}
-        />
+        <div
+          ref={canvasWrapperRef}
+          style={
+            isMobile
+              ? {
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  touchAction: 'none',
+                }
+              : undefined
+          }
+        >
+          <canvas
+            ref={canvasRef}
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            style={{
+              ...canvasStyle,
+              ...(isMobile ? { width: '100%', height: 'auto', display: 'block' } : {}),
+            }}
+          />
+        </div>
 
         {/* Pause Menu Overlay */}
         {showPauseMenu && (
@@ -405,6 +433,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
       <div
         style={{
           ...statusTextStyle,
+          flexShrink: 0,
           color:
             status === 'connected'
               ? '#00ff88'
@@ -417,7 +446,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
       </div>
 
       {!isMobile && (
-        <div style={controlsStyle}>
+        <div style={{ ...controlsStyle, flexShrink: 0 }}>
           <kbd style={kbdStyle}>←</kbd> <kbd style={kbdStyle}>→</kbd> Move
           &nbsp;&nbsp;
           <kbd style={kbdStyle}>Space</kbd> Shoot
@@ -426,8 +455,8 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
         </div>
       )}
       {isMobile && (
-        <div style={controlsStyle}>
-          Touch bottom 40% to move • Auto-fire • Two-finger tap to pause
+        <div style={{ ...controlsStyle, flexShrink: 0, fontSize: '0.65rem', padding: '0.25rem' }}>
+          Glisse en bas pour bouger • Tir auto • Deux doigts = pause
         </div>
       )}
     </div>
@@ -438,6 +467,8 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
 
 const containerStyle: React.CSSProperties = {
   minHeight: '100vh',
+  height: '100vh',
+  maxHeight: '100dvh',
   background: '#0a0a0f',
   display: 'flex',
   flexDirection: 'column',
@@ -445,6 +476,7 @@ const containerStyle: React.CSSProperties = {
   justifyContent: 'center',
   fontFamily: 'JetBrains Mono, Fira Code, monospace',
   color: '#e0e0e0',
+  overflow: 'hidden',
 }
 
 const headerStyle: React.CSSProperties = {
@@ -509,6 +541,7 @@ const pauseButtonStyle: React.CSSProperties = {
 const canvasContainerStyle: React.CSSProperties = {
   position: 'relative',
   maxWidth: '100%',
+  flexShrink: 0,
 }
 
 const canvasStyle: React.CSSProperties = {

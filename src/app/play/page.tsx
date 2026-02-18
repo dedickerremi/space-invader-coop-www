@@ -52,18 +52,12 @@ export default function PlayPage() {
   }
 
   return (
-    <>
-      <GameCanvas
-        matchToken={matchData.matchToken}
-        wsUrl={matchData.wsUrl}
-        matchId={matchData.matchId}
-        playerId={matchData.playerId}
-      />
-      {/* Debug: vérifier l’URL WS utilisée (à retirer après diagnostic) */}
-      <div style={{ position: 'fixed', bottom: '2rem', left: 8, fontSize: 10, color: '#333', fontFamily: 'monospace' }}>
-        WS: {matchData.wsUrl}
-      </div>
-    </>
+    <GameCanvas
+      matchToken={matchData.matchToken}
+      wsUrl={matchData.wsUrl}
+      matchId={matchData.matchId}
+      playerId={matchData.playerId}
+    />
   )
 }
 
