@@ -1,5 +1,5 @@
 # Deploy with optional version bump (patch / minor / major).
-# Updates frontend/package.json, then merges main → production and triggers Vercel.
+# Updates package.json (repo root), then merges main → production and triggers Vercel.
 name: Deploy with version
 
 on:
@@ -36,14 +36,14 @@ jobs:
           git checkout main
           git pull origin main
 
-      - name: Bump frontend version
+      - name: Bump version
         id: bump
         run: |
-          cd frontend && npm version ${{ inputs.version_bump }} --no-git-tag-version && cd ..
-          NEW_VERSION=$(node -p "require('./frontend/package.json').version")
+          npm version ${{ inputs.version_bump }} --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          git add frontend/package.json
-          git diff --staged --quiet || git commit -m "chore(release): bump frontend to v${NEW_VERSION} [${inputs.version_bump}]"
+          git add package.json
+          git diff --staged --quiet || git commit -m "chore(release): bump to v${NEW_VERSION} [${inputs.version_bump}]"
           git push origin main
 
       - name: Merge main into production
