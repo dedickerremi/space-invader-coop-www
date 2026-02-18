@@ -1,0 +1,66 @@
+# Deploy with optional version bump (patch / minor / major).
+# Updates frontend/package.json, then merges main → production and triggers Vercel.
+name: Deploy with version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Bump frontend version before deploy'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Checkout main and pull
+        run: |
+          git checkout main
+          git pull origin main
+
+      - name: Bump frontend version
+        id: bump
+        run: |
+          cd frontend && npm version ${{ inputs.version_bump }} --no-git-tag-version && cd ..
+          NEW_VERSION=$(node -p "require('./frontend/package.json').version")
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          git add frontend/package.json
+          git diff --staged --quiet || git commit -m "chore(release): bump frontend to v${NEW_VERSION} [${inputs.version_bump}]"
+          git push origin main
+
+      - name: Merge main into production
+        run: |
+          git fetch origin
+          if git show-ref --verify --quiet refs/remotes/origin/production; then
+            git checkout -B production origin/production
+            git merge origin/main -m "chore: merge main into production [v${{ steps.bump.outputs.new_version }}]"
+          else
+            git checkout -B production origin/main
+          fi
+          git push origin production
+
+      - name: Trigger Vercel production deploy
+        env:
+          HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_PRODUCTION }}
+        run: |
+          if [ -n "$HOOK_URL" ]; then
+            curl -X POST -f "$HOOK_URL"
+          fi

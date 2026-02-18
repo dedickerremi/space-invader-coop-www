@@ -8,6 +8,7 @@ out/
 # Build
 dist/
 version.json
+version-history.json
 
 # Logs
 *.log
