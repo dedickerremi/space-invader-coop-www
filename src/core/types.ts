@@ -43,6 +43,24 @@ export type GameOverSummary = {
   playerScores: PlayerScore[]
 }
 
+/** Game dimensions/layout from backend (GET /api/game-meta). Single source of truth for display. */
+export type GameMeta = {
+  gameWidth: number
+  gameHeight: number
+  playerXMin: number
+  playerXMax: number
+  playerY: number
+  playerWidth: number
+  playerHeight: number
+  bulletSpeed: number
+  bulletWidth: number
+  bulletHeight: number
+  enemyBulletWidth: number
+  enemyBulletHeight: number
+  enemySize: number
+  patrolSize: number
+}
+
 export type GameState = {
   players: Player[]
   bullets: Bullet[]

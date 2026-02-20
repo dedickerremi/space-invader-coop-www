@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { GameState } from './types'
+import { getGameMeta } from './gameMeta'
 import { createSpriteSheet, generateStars } from './Sprites'
 import type { SpriteSheet, Star } from './Sprites'
 
@@ -43,18 +44,6 @@ const PATROL_GLOW = 'rgba(255, 68, 255, 0.6)'
 const ENEMY_BULLET_COLOR = '#ff6644'
 const ENEMY_BULLET_GLOW = 'rgba(255, 102, 68, 0.5)'
 
-// --- Constants ---
-
-const PLAYER_WIDTH = 40
-const PLAYER_HEIGHT = 26
-const PLAYER_Y = 550
-const BULLET_WIDTH = 6
-const BULLET_HEIGHT = 14
-const ENEMY_BULLET_WIDTH = 6
-const ENEMY_BULLET_HEIGHT = 10
-const ENEMY_SIZE = 28
-const PATROL_SIZE = 32
-
 // Enemy animation: alternate frames every N ms
 const ENEMY_ANIM_INTERVAL = 600
 
@@ -86,8 +75,9 @@ export class GameRenderer {
   hitFlashUntil = 0
 
   constructor(canvas: HTMLCanvasElement, config?: RendererConfig) {
-    this.width = config?.width ?? 800
-    this.height = config?.height ?? 600
+    const meta = getGameMeta()
+    this.width = config?.width ?? meta.gameWidth
+    this.height = config?.height ?? meta.gameHeight
     this.colors = { ...DEFAULT_COLORS, ...config?.colors }
     const dpr = config?.devicePixelRatio ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1)
 
@@ -144,14 +134,11 @@ export class GameRenderer {
     // Draw players
     this.renderPlayers(state)
 
-    // Draw bullets
+    // Draw player bullets (so they appear from the ship)
     this.renderBullets(state)
 
     // Draw enemies
     this.renderEnemies(state)
-
-    // Draw enemy bullets
-    this.renderEnemyBullets(state)
 
     // Draw pause indicator (when other player paused and we're not showing our own menu)
     if (state.paused && !this.showPauseOverlay) {
@@ -167,6 +154,9 @@ export class GameRenderer {
         ctx.fillRect(0, 0, this.width, this.height)
       }
     }
+
+    // Draw enemy bullets last so they're always visible all the way to the bottom
+    this.renderEnemyBullets(state)
   }
 
   /**
@@ -223,6 +213,7 @@ export class GameRenderer {
   private renderPlayers(state: GameState): void {
     const ctx = this.ctx
     const now = performance.now()
+    const m = getGameMeta()
 
     // Disable smoothing for crisp pixel art
     ctx.imageSmoothingEnabled = false
@@ -231,43 +222,37 @@ export class GameRenderer {
       const isMe = player.id === this.localPlayerId
       const isInvincible = player.invincibleTimer > 0
 
-      // --- Dead player: show respawn countdown ---
+      // --- Dead player: show respawn countdown (can move, cannot shoot) ---
       if (!player.alive) {
-        // Draw ghost sprite (faded)
-        const ghostX = isMe ? 200 : 600 // show at spawn position
-        const drawX = ghostX - PLAYER_WIDTH / 2
-        const drawY = PLAYER_Y - PLAYER_HEIGHT / 2
+        const drawX = player.x - m.playerWidth / 2
+        const drawY = m.playerY - m.playerHeight / 2
 
         if (player.lives > 0) {
-          // Faded ghost sprite
           ctx.globalAlpha = 0.25
-          ctx.drawImage(this.sprites.playerDead, drawX, drawY, PLAYER_WIDTH, PLAYER_HEIGHT)
+          ctx.drawImage(this.sprites.playerDead, drawX, drawY, m.playerWidth, m.playerHeight)
           ctx.globalAlpha = 1.0
 
-          // Respawn countdown text
-          const seconds = Math.ceil(player.respawnTimer / 30) // 30 ticks per second
+          const seconds = Math.ceil(player.respawnTimer / 30)
           ctx.fillStyle = '#ffaa00'
           ctx.font = '14px JetBrains Mono, monospace'
           ctx.textAlign = 'center'
-          ctx.fillText(`${seconds}s`, ghostX, PLAYER_Y - PLAYER_HEIGHT / 2 - 8)
+          ctx.fillText(`${seconds}s`, player.x, m.playerY - m.playerHeight / 2 - 8)
         } else {
-          // Permanently dead — dim "X"
           ctx.globalAlpha = 0.15
-          ctx.drawImage(this.sprites.playerDead, drawX, drawY, PLAYER_WIDTH, PLAYER_HEIGHT)
+          ctx.drawImage(this.sprites.playerDead, drawX, drawY, m.playerWidth, m.playerHeight)
           ctx.globalAlpha = 1.0
 
           ctx.fillStyle = '#ff4444'
           ctx.font = '16px JetBrains Mono, monospace'
           ctx.textAlign = 'center'
-          ctx.fillText('DEAD', ghostX, PLAYER_Y - PLAYER_HEIGHT / 2 - 8)
+          ctx.fillText('DEAD', player.x, m.playerY - m.playerHeight / 2 - 8)
         }
 
-        // Player label + lives below
         ctx.fillStyle = '#666'
         ctx.font = '10px JetBrains Mono, monospace'
         ctx.textAlign = 'center'
         const label = isMe ? 'YOU' : `P${index + 1}`
-        ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, ghostX, PLAYER_Y + PLAYER_HEIGHT / 2 + 14)
+        ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, player.x, m.playerY + m.playerHeight / 2 + 14)
         return
       }
 
@@ -279,8 +264,8 @@ export class GameRenderer {
         sprite = this.sprites.player2
       }
 
-      const drawX = player.x - PLAYER_WIDTH / 2
-      const drawY = PLAYER_Y - PLAYER_HEIGHT / 2
+      const drawX = player.x - m.playerWidth / 2
+      const drawY = m.playerY - m.playerHeight / 2
 
       // Invincibility: blink effect (flash every ~100ms)
       if (isInvincible) {
@@ -292,11 +277,11 @@ export class GameRenderer {
       const color = isMe ? this.colors.player1 : this.colors.player2
       ctx.shadowColor = isInvincible ? '#ffffff' : color
       ctx.shadowBlur = isInvincible ? 24 : 18
-      ctx.drawImage(sprite, drawX, drawY, PLAYER_WIDTH, PLAYER_HEIGHT)
+      ctx.drawImage(sprite, drawX, drawY, m.playerWidth, m.playerHeight)
       ctx.shadowBlur = 0
 
       // Draw sprite (on top of glow)
-      ctx.drawImage(sprite, drawX, drawY, PLAYER_WIDTH, PLAYER_HEIGHT)
+      ctx.drawImage(sprite, drawX, drawY, m.playerWidth, m.playerHeight)
 
       // Reset alpha
       ctx.globalAlpha = 1.0
@@ -306,7 +291,7 @@ export class GameRenderer {
       ctx.font = '10px JetBrains Mono, monospace'
       ctx.textAlign = 'center'
       const label = isMe ? 'YOU' : `P${index + 1}`
-      ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, player.x, PLAYER_Y + PLAYER_HEIGHT / 2 + 14)
+      ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, player.x, m.playerY + m.playerHeight / 2 + 14)
     })
 
     ctx.imageSmoothingEnabled = true
@@ -314,6 +299,7 @@ export class GameRenderer {
 
   private renderBullets(state: GameState): void {
     const ctx = this.ctx
+    const m = getGameMeta()
 
     // Disable smoothing for crisp pixel art
     ctx.imageSmoothingEnabled = false
@@ -324,10 +310,10 @@ export class GameRenderer {
     for (const bullet of state.bullets) {
       ctx.drawImage(
         this.sprites.bullet,
-        bullet.x - BULLET_WIDTH / 2,
-        bullet.y - BULLET_HEIGHT / 2,
-        BULLET_WIDTH,
-        BULLET_HEIGHT,
+        bullet.x - m.bulletWidth / 2,
+        bullet.y - m.bulletHeight / 2,
+        m.bulletWidth,
+        m.bulletHeight,
       )
     }
 
@@ -337,6 +323,7 @@ export class GameRenderer {
 
   private renderEnemies(state: GameState): void {
     const ctx = this.ctx
+    const m = getGameMeta()
     const enemies = state.enemies ?? []
 
     // Pick animation frame based on time
@@ -348,7 +335,7 @@ export class GameRenderer {
 
     for (const e of enemies) {
       const isPatrol = e.type === 'patrol'
-      const size = isPatrol ? PATROL_SIZE : ENEMY_SIZE
+      const size = isPatrol ? m.patrolSize : m.enemySize
       const half = size / 2
       const glowColor = isPatrol ? PATROL_GLOW : this.colors.enemyGlow
 
@@ -375,6 +362,7 @@ export class GameRenderer {
 
   private renderEnemyBullets(state: GameState): void {
     const ctx = this.ctx
+    const m = getGameMeta()
     const bullets = state.enemyBullets ?? []
     if (bullets.length === 0) return
 
@@ -385,10 +373,10 @@ export class GameRenderer {
     for (const b of bullets) {
       ctx.drawImage(
         this.sprites.enemyBullet,
-        b.x - ENEMY_BULLET_WIDTH / 2,
-        b.y - ENEMY_BULLET_HEIGHT / 2,
-        ENEMY_BULLET_WIDTH,
-        ENEMY_BULLET_HEIGHT,
+        b.x - m.enemyBulletWidth / 2,
+        b.y - m.enemyBulletHeight / 2,
+        m.enemyBulletWidth,
+        m.enemyBulletHeight,
       )
     }
 

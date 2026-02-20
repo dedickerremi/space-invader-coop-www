@@ -9,8 +9,14 @@ import {
   DesktopInputAdapter,
   MobileInputAdapter,
   createMobileMovementConverter,
+  fetchGameMeta,
+  setGameMeta,
+  getDefaultMeta,
+  getGameMeta,
+  getLogicalWidth,
+  getLogicalHeight,
 } from '@/core'
-import type { GameState, GameOverSummary } from '@/core'
+import type { GameState, GameOverSummary, Bullet } from '@/core'
 
 // --- Types ---
 
@@ -42,8 +48,7 @@ type GameCanvasProps = {
 const WS_URL_DEFAULT =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_WS_URL) || 'ws://localhost:3001'
 
-const CANVAS_WIDTH = 800
-const CANVAS_HEIGHT = 600
+// Canvas size comes from backend meta (set after fetch)
 
 /** Hit flash duration (ms); optional vibration on kill */
 const HIT_FEEDBACK_MS = 80
@@ -61,6 +66,12 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
   const bridgeRef = useRef<InputBridge | null>(null)
   const adapterRef = useRef<DesktopInputAdapter | MobileInputAdapter | null>(null)
   const lastKillsRef = useRef<number>(0)
+
+  // Client-side bullet prediction: phantom bullets shown instantly on SHOOT,
+  // removed when server confirms or after timeout.
+  type PhantomBullet = Bullet & { createdAt: number }
+  const phantomBulletsRef = useRef<PhantomBullet[]>([])
+  const prevLocalBulletCountRef = useRef(0)
 
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'ended'>('connecting')
   const [statusText, setStatusText] = useState('Connecting...')
@@ -119,13 +130,24 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     router.push('/')
   }, [router])
 
-  // --- Initialize GameClient ---
+  // --- Initialize GameClient (fetch game meta first so renderer has backend dimensions) ---
   useEffect(() => {
     if (!matchToken || !matchId || !playerId) {
       setStatus('error')
       setStatusText('Missing match data - please join a match')
       return
     }
+
+    const effectiveWsUrl = wsUrl || WS_URL_DEFAULT
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        await fetchGameMeta(effectiveWsUrl)
+      } catch {
+        if (!cancelled) setGameMeta(getDefaultMeta())
+      }
+    })()
 
     const client = new GameClient()
     clientRef.current = client
@@ -165,13 +187,38 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
 
       // Client-side prediction: bridge.tick(serverX) → predicted X for local player
       const localPlayer = state.players.find((p) => p.id === client.playerId)
-      const serverX = localPlayer?.x ?? 400
+      const serverX = localPlayer?.x ?? 300
       const predictedX = bridgeRef.current?.tick(serverX) ?? serverX
+
+      // --- Phantom bullet reconciliation ---
+      const now = performance.now()
+      const MAX_PHANTOM_MS = 600
+
+      // Remove phantoms older than timeout (safety net for edge cases)
+      phantomBulletsRef.current = phantomBulletsRef.current.filter(
+        b => now - b.createdAt < MAX_PHANTOM_MS,
+      )
+
+      // When server confirms new bullets from local player, remove oldest phantoms
+      const localServerBullets = state.bullets.filter(b => b.ownerId === client.playerId).length
+      const delta = localServerBullets - prevLocalBulletCountRef.current
+      if (delta > 0) {
+        phantomBulletsRef.current.splice(0, delta)
+      }
+      prevLocalBulletCountRef.current = localServerBullets
+
+      // Move remaining phantoms up at server bullet speed
+      const bSpeed = getGameMeta().bulletSpeed
+      phantomBulletsRef.current = phantomBulletsRef.current
+        .map(b => ({ ...b, y: b.y - bSpeed }))
+        .filter(b => b.y > 0)
+
       const stateForRender: GameState = {
         ...state,
         players: state.players.map((p) =>
           p.id === client.playerId ? { ...p, x: predictedX } : p,
         ),
+        bullets: [...state.bullets, ...phantomBulletsRef.current],
       }
 
       if (rendererRef.current) {
@@ -232,15 +279,27 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     const bridge = new InputBridge(
       (dir) => client.send({ type: 'MOVE', dir }),
       () => client.send({ type: 'STOP' }),
-      () => client.send({ type: 'SHOOT' }),
+      () => {
+        client.send({ type: 'SHOOT' })
+        const meta = getGameMeta()
+        const st = rendererRef.current?.state
+        const lp = st?.players.find(p => p.id === client.playerId)
+        const px = lp?.x ?? meta.gameWidth / 2
+        phantomBulletsRef.current.push({
+          x: px,
+          y: meta.playerY - meta.playerHeight / 2,
+          ownerId: client.playerId ?? '',
+          createdAt: performance.now(),
+        })
+      },
       () => togglePause(),
     )
     bridgeRef.current = bridge
 
-    const effectiveWsUrl = wsUrl || WS_URL_DEFAULT
     client.connect(effectiveWsUrl, { token: matchToken, matchId, playerId })
 
     return () => {
+      cancelled = true
       client.disconnect()
       client.removeAllListeners()
       clientRef.current = null
@@ -248,12 +307,14 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     }
   }, [matchToken, matchId, playerId, wsUrl, router, togglePause])
 
-  // --- Initialize Renderer ---
+  // --- Initialize Renderer (uses backend meta for size; getGameMeta() for drawing) ---
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const renderer = new GameRenderer(canvas, { width: CANVAS_WIDTH, height: CANVAS_HEIGHT })
+    const w = getLogicalWidth()
+    const h = getLogicalHeight()
+    const renderer = new GameRenderer(canvas, { width: w, height: h })
     rendererRef.current = renderer
     renderer.start()
 
@@ -313,29 +374,30 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
 
   return (
     <div style={containerStyle}>
-      <div style={{ ...headerStyle, flexShrink: 0 }}>
-        <h1 style={{ ...titleStyle, ...(isMobile ? { fontSize: '1rem', letterSpacing: '0.15em' } : {}) }}>
-          Space Invaders
-        </h1>
-        <div style={scoreLivesStyle}>
-          <span style={scoreStyle}>Score: {totalPoints}</span>
-          {livesDisplay.map((p) => (
-            <span
-              key={p.label}
-              style={{
-                color: p.isMe ? '#00ff88' : '#00aaff',
-                opacity: p.alive ? 1 : 0.5,
-              }}
-            >
-              {p.label}: {p.hearts}
-            </span>
-          ))}
-          <span style={pingStyle}>{pingMs}ms</span>
+      {/* Desktop: header above game */}
+      {!isMobile && (
+        <div style={{ ...headerStyle, flexShrink: 0 }}>
+          <h1 style={titleStyle}>Space Invaders</h1>
+          <div style={scoreLivesStyle}>
+            <span style={scoreStyle}>Score: {totalPoints}</span>
+            {livesDisplay.map((p) => (
+              <span
+                key={p.label}
+                style={{
+                  color: p.isMe ? '#00ff88' : '#00aaff',
+                  opacity: p.alive ? 1 : 0.5,
+                }}
+              >
+                {p.label}: {p.hearts}
+              </span>
+            ))}
+            <span style={pingStyle}>{pingMs}ms</span>
+          </div>
+          <button onClick={togglePause} style={pauseButtonStyle} title="Pause (Esc)" disabled={gameOver}>
+            ⏸
+          </button>
         </div>
-        <button onClick={togglePause} style={pauseButtonStyle} title="Pause (Esc)" disabled={gameOver}>
-          ⏸
-        </button>
-      </div>
+      )}
 
       <div
         ref={gameViewContainerRef}
@@ -343,9 +405,10 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
           ...canvasContainerStyle,
           ...(isMobile
             ? {
-                flex: 1,
-                minHeight: 0,
+                position: 'absolute',
+                inset: 0,
                 width: '100%',
+                height: '100%',
                 overflow: 'hidden',
                 touchAction: 'none',
                 display: 'flex',
@@ -363,20 +426,74 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
                   maxWidth: '100%',
                   maxHeight: '100%',
                   touchAction: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }
               : undefined
           }
         >
           <canvas
             ref={canvasRef}
-            width={CANVAS_WIDTH}
-            height={CANVAS_HEIGHT}
+            width={getLogicalWidth()}
+            height={getLogicalHeight()}
             style={{
               ...canvasStyle,
-              ...(isMobile ? { width: '100%', height: 'auto', display: 'block' } : {}),
+              ...(isMobile
+                ? {
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    width: 'auto',
+                    height: 'auto',
+                    display: 'block',
+                  }
+                : {}),
             }}
           />
         </div>
+
+        {/* On mobile: header overlay on top of game */}
+        {isMobile && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0.5rem 0.75rem',
+              background: 'linear-gradient(to bottom, rgba(10,10,15,0.9) 0%, transparent 100%)',
+              pointerEvents: 'none',
+            }}
+          >
+            <h1 style={{ ...titleStyle, fontSize: '0.9rem', letterSpacing: '0.1em', margin: 0 }}>
+              Space Invaders
+            </h1>
+            <div style={{ ...scoreLivesStyle, fontSize: '0.8rem' }}>
+              <span style={scoreStyle}>{totalPoints}</span>
+              {livesDisplay.map((p) => (
+                <span
+                  key={p.label}
+                  style={{ color: p.isMe ? '#00ff88' : '#00aaff', opacity: p.alive ? 1 : 0.5 }}
+                >
+                  {p.label}: {p.hearts}
+                </span>
+              ))}
+              <span style={pingStyle}>{pingMs}ms</span>
+            </div>
+            <button
+              onClick={togglePause}
+              style={{ ...pauseButtonStyle, pointerEvents: 'auto' }}
+              title="Pause"
+              disabled={gameOver}
+            >
+              ⏸
+            </button>
+          </div>
+        )}
 
         {/* Pause Menu Overlay */}
         {showPauseMenu && (
@@ -428,36 +545,68 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
             </div>
           </div>
         )}
-      </div>
-
-      <div
-        style={{
-          ...statusTextStyle,
-          flexShrink: 0,
-          color:
-            status === 'connected'
-              ? '#00ff88'
-              : status === 'error' || status === 'ended'
-                ? '#ff4444'
-                : '#666',
-        }}
-      >
-        {statusText}
+        {/* On mobile: status + hint as bottom overlay */}
+        {isMobile && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 10,
+              padding: '0.5rem 0.75rem',
+              background: 'linear-gradient(to top, rgba(10,10,15,0.85) 0%, transparent 100%)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.25rem',
+              pointerEvents: 'none',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '0.75rem',
+                color:
+                  status === 'connected'
+                    ? '#00ff88'
+                    : status === 'error' || status === 'ended'
+                      ? '#ff4444'
+                      : '#666',
+              }}
+            >
+              {statusText}
+            </span>
+            <span style={{ fontSize: '0.6rem', color: '#444' }}>
+              Glisse en bas pour bouger • Tir auto • 2 doigts = pause
+            </span>
+          </div>
+        )}
       </div>
 
       {!isMobile && (
-        <div style={{ ...controlsStyle, flexShrink: 0 }}>
-          <kbd style={kbdStyle}>←</kbd> <kbd style={kbdStyle}>→</kbd> Move
-          &nbsp;&nbsp;
-          <kbd style={kbdStyle}>Space</kbd> Shoot
-          &nbsp;&nbsp;
-          <kbd style={kbdStyle}>Esc</kbd> Pause
-        </div>
-      )}
-      {isMobile && (
-        <div style={{ ...controlsStyle, flexShrink: 0, fontSize: '0.65rem', padding: '0.25rem' }}>
-          Glisse en bas pour bouger • Tir auto • Deux doigts = pause
-        </div>
+        <>
+          <div
+            style={{
+              ...statusTextStyle,
+              flexShrink: 0,
+              color:
+                status === 'connected'
+                  ? '#00ff88'
+                  : status === 'error' || status === 'ended'
+                    ? '#ff4444'
+                    : '#666',
+            }}
+          >
+            {statusText}
+          </div>
+          <div style={{ ...controlsStyle, flexShrink: 0 }}>
+            <kbd style={kbdStyle}>←</kbd> <kbd style={kbdStyle}>→</kbd> Move
+            &nbsp;&nbsp;
+            <kbd style={kbdStyle}>Space</kbd> Shoot
+            &nbsp;&nbsp;
+            <kbd style={kbdStyle}>Esc</kbd> Pause
+          </div>
+        </>
       )}
     </div>
   )

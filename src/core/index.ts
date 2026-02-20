@@ -8,8 +8,11 @@ export { GameClient } from './GameClient'
 export { GameRenderer } from './GameRenderer'
 export { MatchmakingClient } from './MatchmakingClient'
 
-// World (logical dimensions)
-export { LOGICAL_WIDTH, LOGICAL_HEIGHT, PLAYER_X_MIN, PLAYER_X_MAX, PLAYER_Y, clampPlayerX } from './world'
+// World (logical dimensions from backend meta)
+export { getLogicalWidth, getLogicalHeight, getPlayerXMin, getPlayerXMax, getPlayerY, clampPlayerX } from './world'
+
+// Game metadata (fetch from backend, single source of truth for sizes)
+export { fetchGameMeta, getGameMeta, setGameMeta, getDefaultMeta } from './gameMeta'
 
 // Viewport (pixel ↔ logical)
 export {
@@ -36,6 +39,7 @@ export type {
   EnemyBullet,
   PlayerScore,
   GameOverSummary,
+  GameMeta,
   GameState,
   // Messages
   ServerMessage,
