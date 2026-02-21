@@ -84,6 +84,30 @@ const ENEMY_BULLET_PATTERN = [
   [0, 1, 0],
 ]
 
+// Power-up: speed — lightning bolt shape (7 x 9)
+const POWERUP_SPEED_PATTERN = [
+  [0, 0, 0, 1, 1, 0, 0],
+  [0, 0, 1, 1, 0, 0, 0],
+  [0, 1, 1, 0, 0, 0, 0],
+  [1, 1, 1, 1, 1, 1, 0],
+  [0, 0, 0, 0, 1, 1, 0],
+  [0, 0, 0, 1, 1, 0, 0],
+  [0, 0, 1, 1, 0, 0, 0],
+  [0, 1, 1, 0, 0, 0, 0],
+  [1, 1, 0, 0, 0, 0, 0],
+]
+
+// Power-up: multishot — triple arrow shape (9 x 7)
+const POWERUP_MULTISHOT_PATTERN = [
+  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [1, 1, 1, 0, 1, 0, 1, 1, 1],
+  [0, 1, 0, 1, 1, 1, 0, 1, 0],
+  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+]
+
 // --- Sprite generation ---
 
 /**
@@ -149,6 +173,8 @@ export type SpriteSheet = {
   patrolB: HTMLCanvasElement
   bullet: HTMLCanvasElement
   enemyBullet: HTMLCanvasElement
+  powerUpSpeed: HTMLCanvasElement
+  powerUpMultishot: HTMLCanvasElement
 }
 
 export type SpriteColors = {
@@ -176,5 +202,7 @@ export function createSpriteSheet(colors: SpriteColors): SpriteSheet {
     patrolB: createSprite(PATROL_PATTERN_B, colors.enemyPatrol),
     bullet: createSprite(BULLET_PATTERN, colors.bullet),
     enemyBullet: createSprite(ENEMY_BULLET_PATTERN, colors.enemyBullet),
+    powerUpSpeed: createSprite(POWERUP_SPEED_PATTERN, '#ffdd00'),
+    powerUpMultishot: createSprite(POWERUP_MULTISHOT_PATTERN, '#00ddff'),
   }
 }

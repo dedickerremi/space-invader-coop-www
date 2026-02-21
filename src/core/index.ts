@@ -37,6 +37,7 @@ export type {
   Bullet,
   Enemy,
   EnemyBullet,
+  PowerUp,
   PlayerScore,
   GameOverSummary,
   GameMeta,

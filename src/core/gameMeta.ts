@@ -24,6 +24,7 @@ export function getDefaultMeta(): GameMeta {
     enemyBulletHeight: 10,
     enemySize: 28,
     patrolSize: 32,
+    powerUpSize: 20,
   }
 }
 

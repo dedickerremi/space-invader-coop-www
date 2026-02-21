@@ -12,6 +12,8 @@ export type Player = {
   lives: number
   respawnTimer: number     // ticks until respawn (0 = not respawning)
   invincibleTimer: number  // ticks of invincibility remaining (0 = vulnerable)
+  activePowerUp: string    // "" = none, "speed", "multishot"
+  powerUpTimer: number     // ticks remaining
 }
 
 export type Bullet = {
@@ -31,6 +33,12 @@ export type EnemyBullet = {
   y: number
   dx: number
   dy: number
+}
+
+export type PowerUp = {
+  x: number
+  y: number
+  kind: 'speed' | 'multishot'
 }
 
 export type PlayerScore = {
@@ -59,6 +67,7 @@ export type GameMeta = {
   enemyBulletHeight: number
   enemySize: number
   patrolSize: number
+  powerUpSize: number
 }
 
 export type GameState = {
@@ -66,6 +75,7 @@ export type GameState = {
   bullets: Bullet[]
   enemyBullets: EnemyBullet[]
   enemies: Enemy[]
+  powerUps: PowerUp[]
   lives: number
   points: Record<string, number>
   kills: Record<string, number>

@@ -140,6 +140,9 @@ export class GameRenderer {
     // Draw enemies
     this.renderEnemies(state)
 
+    // Draw power-ups (falling collectibles)
+    this.renderPowerUps(state)
+
     // Draw pause indicator (when other player paused and we're not showing our own menu)
     if (state.paused && !this.showPauseOverlay) {
       this.renderPausedByOther()
@@ -286,12 +289,32 @@ export class GameRenderer {
       // Reset alpha
       ctx.globalAlpha = 1.0
 
-      // Player label + lives
+      // Active power-up aura
+      if (player.activePowerUp) {
+        const auraColor = player.activePowerUp === 'speed' ? '#ffdd00' : '#00ddff'
+        const auraAlpha = 0.3 + 0.2 * Math.sin(now / 150)
+        ctx.strokeStyle = auraColor
+        ctx.lineWidth = 2
+        ctx.globalAlpha = auraAlpha
+        ctx.strokeRect(
+          drawX - 4, drawY - 4,
+          m.playerWidth + 8, m.playerHeight + 8,
+        )
+        ctx.globalAlpha = 1.0
+      }
+
+      // Player label + lives + power-up indicator
       ctx.fillStyle = '#fff'
       ctx.font = '10px JetBrains Mono, monospace'
       ctx.textAlign = 'center'
       const label = isMe ? 'YOU' : `P${index + 1}`
-      ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, player.x, m.playerY + m.playerHeight / 2 + 14)
+      let statusLine = `${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`
+      if (player.activePowerUp) {
+        const icon = player.activePowerUp === 'speed' ? '⚡' : '🔱'
+        const secs = Math.ceil((player.powerUpTimer ?? 0) / 30)
+        statusLine += ` ${icon}${secs}s`
+      }
+      ctx.fillText(statusLine, player.x, m.playerY + m.playerHeight / 2 + 14)
     })
 
     ctx.imageSmoothingEnabled = true
@@ -381,6 +404,35 @@ export class GameRenderer {
     }
 
     ctx.shadowBlur = 0
+    ctx.imageSmoothingEnabled = true
+  }
+
+  private renderPowerUps(state: GameState): void {
+    const ctx = this.ctx
+    const m = getGameMeta()
+    const powerUps = state.powerUps ?? []
+    if (powerUps.length === 0) return
+
+    ctx.imageSmoothingEnabled = false
+    const elapsed = performance.now() - this.startTime
+    const bob = Math.sin(elapsed / 200) * 2
+
+    for (const pu of powerUps) {
+      const sprite = pu.kind === 'speed'
+        ? this.sprites.powerUpSpeed
+        : this.sprites.powerUpMultishot
+      const glowColor = pu.kind === 'speed'
+        ? 'rgba(255, 221, 0, 0.7)'
+        : 'rgba(0, 221, 255, 0.7)'
+      const half = m.powerUpSize / 2
+
+      ctx.shadowColor = glowColor
+      ctx.shadowBlur = 16
+      ctx.drawImage(sprite, pu.x - half, pu.y - half + bob, m.powerUpSize, m.powerUpSize)
+      ctx.shadowBlur = 0
+      ctx.drawImage(sprite, pu.x - half, pu.y - half + bob, m.powerUpSize, m.powerUpSize)
+    }
+
     ctx.imageSmoothingEnabled = true
   }
 
