@@ -6,7 +6,8 @@
 
 import { clampPlayerX } from '../world'
 
-export type SendMove = (dir: -1 | 1) => void
+export type MoveAxes = { dir?: -1 | 0 | 1; dirY?: -1 | 0 | 1 }
+export type SendMove = (axes: MoveAxes) => void
 export type SendStop = () => void
 export type SendFire = () => void
 
@@ -18,6 +19,7 @@ export class InputBridge implements IGameController {
   private _targetX: number | null = null
   private _paused = false
   private lastSentDir: -1 | 0 | 1 = 0
+  private lastSentDirY: -1 | 0 | 1 = 0
 
   constructor(
     private sendMove: SendMove,
@@ -27,29 +29,51 @@ export class InputBridge implements IGameController {
     private onPauseRequested?: () => void,
   ) {}
 
-  moveLeft(): void {
+  private setDirX(dir: -1 | 0 | 1): void {
     if (this._paused) return
     this._targetX = null
-    if (this.lastSentDir !== -1) {
-      this.lastSentDir = -1
-      this.sendMove(-1)
+    if (this.lastSentDir !== dir) {
+      this.lastSentDir = dir
+      this.sendMove({ dir })
     }
   }
 
-  moveRight(): void {
+  private setDirY(dirY: -1 | 0 | 1): void {
     if (this._paused) return
-    this._targetX = null
-    if (this.lastSentDir !== 1) {
-      this.lastSentDir = 1
-      this.sendMove(1)
+    if (this.lastSentDirY !== dirY) {
+      this.lastSentDirY = dirY
+      this.sendMove({ dirY })
     }
+  }
+
+  moveLeft(): void {
+    this.setDirX(-1)
+  }
+
+  moveRight(): void {
+    this.setDirX(1)
   }
 
   stop(): void {
     this._targetX = null
     if (this.lastSentDir !== 0) {
       this.lastSentDir = 0
-      this.sendStop()
+      this.sendMove({ dir: 0 })
+    }
+  }
+
+  moveUp(): void {
+    this.setDirY(-1)
+  }
+
+  moveDown(): void {
+    this.setDirY(1)
+  }
+
+  stopY(): void {
+    if (this.lastSentDirY !== 0) {
+      this.lastSentDirY = 0
+      this.sendMove({ dirY: 0 })
     }
   }
 
@@ -75,8 +99,9 @@ export class InputBridge implements IGameController {
     this._paused = paused
     if (paused) {
       this._targetX = null
-      if (this.lastSentDir !== 0) {
+      if (this.lastSentDir !== 0 || this.lastSentDirY !== 0) {
         this.lastSentDir = 0
+        this.lastSentDirY = 0
         this.sendStop()
       }
     }
@@ -96,14 +121,14 @@ export class InputBridge implements IGameController {
     if (Math.abs(dx) <= MOVE_THRESHOLD) {
       if (this.lastSentDir !== 0) {
         this.lastSentDir = 0
-        this.sendStop()
+        this.sendMove({ dir: 0 })
       }
       return this._targetX
     }
     const dir: -1 | 1 = dx < 0 ? -1 : 1
     if (this.lastSentDir !== dir) {
       this.lastSentDir = dir
-      this.sendMove(dir)
+      this.sendMove({ dir })
     }
     return this._targetX
   }

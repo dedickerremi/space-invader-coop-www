@@ -59,6 +59,7 @@ export type {
   ConnectionStatus,
   ConnectionParams,
   // Matchmaking
+  GameMode,
   MatchData,
   QueueResult,
   MatchPollResult,

@@ -77,6 +77,35 @@ export function createMatch(player1Id: string, player2Id: string): Match | null 
   return match
 }
 
+export function createSoloMatch(playerId: string): Match | null {
+  const matches = getMatches()
+  const tokenToMatch = getTokenToMatch()
+
+  if (!canCreateMatch()) {
+    return null
+  }
+
+  const matchId = `match-${generateId()}`
+  const token = `token-${generateId()}`
+
+  const tokens = new Map<string, string>()
+  tokens.set(playerId, token)
+
+  const match: Match = {
+    matchId,
+    playerIds: [playerId],
+    tokens,
+    createdAt: Date.now(),
+  }
+
+  matches.set(matchId, match)
+  tokenToMatch.set(token, { matchId, playerId })
+
+  console.log(`[MATCHMAKING] Created solo ${matchId} for ${playerId}`)
+
+  return match
+}
+
 export function getTokenForPlayer(matchId: string, playerId: string): string | null {
   const match = getMatches().get(matchId)
   if (!match) return null

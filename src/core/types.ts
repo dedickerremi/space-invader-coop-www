@@ -8,6 +8,8 @@
 export type Player = {
   id: string
   x: number
+  y: number
+  directionY: -1 | 0 | 1
   alive: boolean
   lives: number
   respawnTimer: number     // ticks until respawn (0 = not respawning)
@@ -41,6 +43,14 @@ export type PowerUp = {
   kind: 'speed' | 'multishot'
 }
 
+export type Spark = {
+  x: number
+  y: number
+  ttl: number
+  life: number
+  kind: 'bullet'
+}
+
 export type PlayerScore = {
   playerId: string
   points: number
@@ -57,6 +67,8 @@ export type GameMeta = {
   gameHeight: number
   playerXMin: number
   playerXMax: number
+  playerYMin: number
+  playerYMax: number
   playerY: number
   playerWidth: number
   playerHeight: number
@@ -99,7 +111,7 @@ export type ServerMessage = StateMessage | WelcomeMessage | ErrorMessage | Match
 
 // === CLIENT → SERVER MESSAGES ===
 
-export type MoveMessage = { type: 'MOVE'; dir: -1 | 1 }
+export type MoveMessage = { type: 'MOVE'; dir?: -1 | 0 | 1; dirY?: -1 | 0 | 1 }
 export type StopMessage = { type: 'STOP' }
 export type ShootMessage = { type: 'SHOOT' }
 export type PauseMessage = { type: 'PAUSE' }
@@ -120,10 +132,13 @@ export type ClientMessage =
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
+export type GameMode = 'solo' | 'coop'
+
 export type ConnectionParams = {
   token: string
   matchId: string
   playerId: string
+  mode: GameMode
 }
 
 // === MATCHMAKING ===
@@ -133,13 +148,14 @@ export type MatchData = {
   matchToken: string
   wsUrl: string
   playerId: string
+  mode: GameMode
 }
 
 export type QueueResult =
   | { status: 'queued' }
-  | { status: 'matched'; matchId: string; matchToken: string; wsUrl: string; playerId: string }
+  | { status: 'matched'; matchId: string; matchToken: string; wsUrl: string; playerId: string; mode: GameMode }
   | { status: 'error'; error: string }
 
 export type MatchPollResult =
   | { status: 'waiting' }
-  | { status: 'ready'; matchId: string; matchToken: string; wsUrl: string; playerId: string }
+  | { status: 'ready'; matchId: string; matchToken: string; wsUrl: string; playerId: string; mode: GameMode }

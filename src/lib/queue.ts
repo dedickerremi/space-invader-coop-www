@@ -1,7 +1,7 @@
 // In-memory queue and matchmaking logic
 // Uses globalThis to persist data across Next.js API route invocations
 
-import { createMatch, getTokenForPlayer, canCreateMatch } from './matchmaking'
+import { createMatch, createSoloMatch, getTokenForPlayer, canCreateMatch } from './matchmaking'
 import type { Match } from './matchmaking'
 
 type QueuedPlayer = {
@@ -111,6 +111,20 @@ function tryCreateMatch(): void {
     queue.unshift(player1)
     console.log('[QUEUE] Match creation failed, players returned to queue')
   }
+}
+
+export function createAndStoreSoloMatch(userId: string): Match | null {
+  const playerMatches = getPlayerMatches()
+
+  if (playerMatches.has(userId)) {
+    return playerMatches.get(userId)!
+  }
+
+  const match = createSoloMatch(userId)
+  if (match) {
+    playerMatches.set(userId, match)
+  }
+  return match
 }
 
 export function getQueueLength(): number {

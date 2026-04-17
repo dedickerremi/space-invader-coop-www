@@ -225,10 +225,12 @@ export class GameRenderer {
       const isMe = player.id === this.localPlayerId
       const isInvincible = player.invincibleTimer > 0
 
+      const playerY = player.y ?? m.playerY
+
       // --- Dead player: show respawn countdown (can move, cannot shoot) ---
       if (!player.alive) {
         const drawX = player.x - m.playerWidth / 2
-        const drawY = m.playerY - m.playerHeight / 2
+        const drawY = playerY - m.playerHeight / 2
 
         if (player.lives > 0) {
           ctx.globalAlpha = 0.25
@@ -239,7 +241,7 @@ export class GameRenderer {
           ctx.fillStyle = '#ffaa00'
           ctx.font = '14px JetBrains Mono, monospace'
           ctx.textAlign = 'center'
-          ctx.fillText(`${seconds}s`, player.x, m.playerY - m.playerHeight / 2 - 8)
+          ctx.fillText(`${seconds}s`, player.x, playerY - m.playerHeight / 2 - 8)
         } else {
           ctx.globalAlpha = 0.15
           ctx.drawImage(this.sprites.playerDead, drawX, drawY, m.playerWidth, m.playerHeight)
@@ -248,14 +250,14 @@ export class GameRenderer {
           ctx.fillStyle = '#ff4444'
           ctx.font = '16px JetBrains Mono, monospace'
           ctx.textAlign = 'center'
-          ctx.fillText('DEAD', player.x, m.playerY - m.playerHeight / 2 - 8)
+          ctx.fillText('DEAD', player.x, playerY - m.playerHeight / 2 - 8)
         }
 
         ctx.fillStyle = '#666'
         ctx.font = '10px JetBrains Mono, monospace'
         ctx.textAlign = 'center'
         const label = isMe ? 'YOU' : `P${index + 1}`
-        ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, player.x, m.playerY + m.playerHeight / 2 + 14)
+        ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, player.x, playerY + m.playerHeight / 2 + 14)
         return
       }
 
@@ -268,7 +270,7 @@ export class GameRenderer {
       }
 
       const drawX = player.x - m.playerWidth / 2
-      const drawY = m.playerY - m.playerHeight / 2
+      const drawY = playerY - m.playerHeight / 2
 
       // Invincibility: blink effect (flash every ~100ms)
       if (isInvincible) {
@@ -314,7 +316,7 @@ export class GameRenderer {
         const secs = Math.ceil((player.powerUpTimer ?? 0) / 30)
         statusLine += ` ${icon}${secs}s`
       }
-      ctx.fillText(statusLine, player.x, m.playerY + m.playerHeight / 2 + 14)
+      ctx.fillText(statusLine, player.x, playerY + m.playerHeight / 2 + 14)
     })
 
     ctx.imageSmoothingEnabled = true

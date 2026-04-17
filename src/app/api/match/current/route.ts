@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       matchToken: token,
       wsUrl: getWsUrl(),
       playerId: userId,
+      mode: match.playerIds.length === 1 ? 'solo' : 'coop',
     })
   }
 

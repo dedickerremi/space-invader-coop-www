@@ -16,7 +16,7 @@ import {
   getLogicalWidth,
   getLogicalHeight,
 } from '@/core'
-import type { GameState, GameOverSummary, Bullet } from '@/core'
+import type { GameState, GameOverSummary, Bullet, GameMode } from '@/core'
 
 // --- Types ---
 
@@ -41,6 +41,7 @@ type GameCanvasProps = {
   wsUrl?: string
   matchId?: string
   playerId?: string
+  mode?: GameMode
 }
 
 // --- Constants ---
@@ -56,7 +57,7 @@ const VIBRATE_MS = 50
 
 // --- Component ---
 
-export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasProps) {
+export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop' }: GameCanvasProps) {
   const router = useRouter()
   const gameViewContainerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
@@ -277,7 +278,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     })
 
     const bridge = new InputBridge(
-      (dir) => client.send({ type: 'MOVE', dir }),
+      (axes) => client.send({ type: 'MOVE', ...axes }),
       () => client.send({ type: 'STOP' }),
       () => {
         client.send({ type: 'SHOOT' })
@@ -285,9 +286,10 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
         const st = rendererRef.current?.state
         const lp = st?.players.find(p => p.id === client.playerId)
         const px = lp?.x ?? meta.gameWidth / 2
+        const py = lp?.y ?? meta.playerY
         phantomBulletsRef.current.push({
           x: px,
-          y: meta.playerY - meta.playerHeight / 2,
+          y: py - meta.playerHeight / 2,
           ownerId: client.playerId ?? '',
           createdAt: performance.now(),
         })
@@ -296,7 +298,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
     )
     bridgeRef.current = bridge
 
-    client.connect(effectiveWsUrl, { token: matchToken, matchId, playerId })
+    client.connect(effectiveWsUrl, { token: matchToken, matchId, playerId, mode })
 
     return () => {
       cancelled = true
@@ -305,7 +307,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
       clientRef.current = null
       bridgeRef.current = null
     }
-  }, [matchToken, matchId, playerId, wsUrl, router, togglePause])
+  }, [matchToken, matchId, playerId, wsUrl, mode, router, togglePause])
 
   // --- Initialize Renderer (uses backend meta for size; getGameMeta() for drawing) ---
   useEffect(() => {
@@ -600,7 +602,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId }: GameCanvasP
             {statusText}
           </div>
           <div style={{ ...controlsStyle, flexShrink: 0 }}>
-            <kbd style={kbdStyle}>←</kbd> <kbd style={kbdStyle}>→</kbd> Move
+            <kbd style={kbdStyle}>←</kbd> <kbd style={kbdStyle}>→</kbd> <kbd style={kbdStyle}>↑</kbd> <kbd style={kbdStyle}>↓</kbd> Move
             &nbsp;&nbsp;
             <kbd style={kbdStyle}>Space</kbd> Shoot
             &nbsp;&nbsp;

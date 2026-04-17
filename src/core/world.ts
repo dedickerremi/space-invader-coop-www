@@ -30,3 +30,17 @@ export function clampPlayerX(x: number): number {
   const { playerXMin, playerXMax } = getGameMeta()
   return Math.max(playerXMin, Math.min(playerXMax, x))
 }
+
+export function getPlayerYMin(): number {
+  return getGameMeta().playerYMin
+}
+
+export function getPlayerYMax(): number {
+  return getGameMeta().playerYMax
+}
+
+/** Player Y bounds (center of ship). Matches server clamp. */
+export function clampPlayerY(y: number): number {
+  const { playerYMin, playerYMax } = getGameMeta()
+  return Math.max(playerYMin, Math.min(playerYMax, y))
+}

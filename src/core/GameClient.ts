@@ -72,6 +72,7 @@ export class GameClient {
       token: params.token,
       matchId: params.matchId,
       playerId: params.playerId,
+      mode: params.mode,
     })
 
     const ws = new WebSocket(`${wsUrl}?${qs.toString()}`)
