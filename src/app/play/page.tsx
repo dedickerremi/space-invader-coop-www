@@ -9,6 +9,7 @@ type MatchData = {
   matchToken: string
   wsUrl: string
   playerId: string
+  mode?: 'solo' | 'coop'
 }
 
 export default function PlayPage() {
@@ -57,6 +58,7 @@ export default function PlayPage() {
       wsUrl={matchData.wsUrl}
       matchId={matchData.matchId}
       playerId={matchData.playerId}
+      mode={matchData.mode}
     />
   )
 }

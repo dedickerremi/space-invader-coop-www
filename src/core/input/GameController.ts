@@ -6,7 +6,10 @@
 export type GameCommand =
   | { type: 'MOVE_LEFT' }
   | { type: 'MOVE_RIGHT' }
+  | { type: 'MOVE_UP' }
+  | { type: 'MOVE_DOWN' }
   | { type: 'STOP' }
+  | { type: 'STOP_Y' }
   | { type: 'SET_POSITION'; x: number }
   | { type: 'FIRE' }
   | { type: 'PAUSE' }
@@ -19,6 +22,9 @@ export interface IGameController {
   moveLeft(): void
   moveRight(): void
   stop(): void
+  moveUp(): void
+  moveDown(): void
+  stopY(): void
   /** Mobile: set target X (logical). Ship follows finger. */
   setTargetX(x: number | null): void
   fire(): void

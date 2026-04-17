@@ -10,14 +10,16 @@ let currentMeta: GameMeta | null = null
 /** Fallback when fetch fails or before load (matches backend defaults). */
 export function getDefaultMeta(): GameMeta {
   return {
-    gameWidth: 600,
-    gameHeight: 800,
+    gameWidth: 800,
+    gameHeight: 600,
     playerXMin: 20,
-    playerXMax: 580,
-    playerY: 750,
+    playerXMax: 780,
+    playerYMin: 350,
+    playerYMax: 580,
+    playerY: 550,
     playerWidth: 40,
-    playerHeight: 26,
-    bulletSpeed: 10,
+    playerHeight: 20,
+    bulletSpeed: 8,
     bulletWidth: 6,
     bulletHeight: 14,
     enemyBulletWidth: 6,
@@ -44,7 +46,8 @@ export async function fetchGameMeta(wsUrl: string): Promise<GameMeta> {
   const url = `${base}/api/game-meta`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`game-meta: ${res.status}`)
-  const data = (await res.json()) as GameMeta
-  setGameMeta(data)
-  return data
+  const data = (await res.json()) as Partial<GameMeta>
+  const merged: GameMeta = { ...getDefaultMeta(), ...data }
+  setGameMeta(merged)
+  return merged
 }

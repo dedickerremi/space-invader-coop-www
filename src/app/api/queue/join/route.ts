@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { addToQueue, getPlayerMatch, getTokenForPlayer } from '@/lib/queue'
+import { addToQueue, getPlayerMatch, getTokenForPlayer, createAndStoreSoloMatch } from '@/lib/queue'
 import { getWsUrl } from '@/lib/matchmaking'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { userId } = body
+    const { userId, mode = 'coop' } = body
 
     if (!userId || typeof userId !== 'string') {
       return NextResponse.json(
@@ -14,7 +14,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Add to queue (may trigger match creation)
+    // Solo mode: create match immediately, no queue
+    if (mode === 'solo') {
+      const match = createAndStoreSoloMatch(userId)
+      if (!match) {
+        return NextResponse.json({
+          status: 'error',
+          error: 'Cannot create match: max active matches reached',
+        })
+      }
+      const token = getTokenForPlayer(match.matchId, userId)
+      return NextResponse.json({
+        status: 'matched',
+        matchId: match.matchId,
+        matchToken: token,
+        wsUrl: getWsUrl(),
+        playerId: userId,
+        mode: 'solo',
+      })
+    }
+
+    // Coop mode: add to queue (may trigger match creation)
     addToQueue(userId)
 
     // Check if match was created
@@ -28,6 +48,7 @@ export async function POST(request: NextRequest) {
         matchToken: token,
         wsUrl: getWsUrl(),
         playerId: userId,
+        mode: 'coop',
       })
     }
 

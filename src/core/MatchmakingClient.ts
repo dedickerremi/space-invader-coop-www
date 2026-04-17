@@ -3,7 +3,7 @@
 // Framework-agnostic: pure TypeScript, uses fetch API only
 // ============================================================
 
-import type { QueueResult, MatchPollResult } from './types'
+import type { QueueResult, MatchPollResult, GameMode } from './types'
 
 export class MatchmakingClient {
   private baseUrl: string
@@ -21,11 +21,11 @@ export class MatchmakingClient {
    * Join the matchmaking queue.
    * Returns 'queued' if waiting, 'matched' if a match was found immediately.
    */
-  async joinQueue(userId: string): Promise<QueueResult> {
+  async joinQueue(userId: string, mode: GameMode = 'coop'): Promise<QueueResult> {
     const res = await fetch(`${this.baseUrl}/api/queue/join`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, mode }),
     })
 
     const data = await res.json()
@@ -37,6 +37,7 @@ export class MatchmakingClient {
         matchToken: data.matchToken,
         wsUrl: data.wsUrl,
         playerId: data.playerId,
+        mode: data.mode ?? mode,
       }
     }
 
@@ -73,6 +74,7 @@ export class MatchmakingClient {
         matchToken: data.matchToken,
         wsUrl: data.wsUrl,
         playerId: data.playerId,
+        mode: data.mode ?? 'coop',
       }
     }
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MatchmakingClient } from '@/core'
-import type { MatchData } from '@/core'
+import type { MatchData, GameMode } from '@/core'
 
 type MatchStatus = 'idle' | 'joining' | 'waiting' | 'ready' | 'error'
 
@@ -34,6 +34,7 @@ export default function Home() {
             matchToken: result.matchToken,
             wsUrl: result.wsUrl,
             playerId: result.playerId,
+            mode: result.mode,
           })
           setStatus('ready')
         }
@@ -53,14 +54,14 @@ export default function Home() {
     }
   }, [status, matchData, router])
 
-  const joinQueue = useCallback(async () => {
+  const joinQueue = useCallback(async (mode: GameMode = 'coop') => {
     if (!userId) return
 
     setStatus('joining')
     setError(null)
 
     try {
-      const result = await matchmakingRef.current.joinQueue(userId)
+      const result = await matchmakingRef.current.joinQueue(userId, mode)
 
       if (result.status === 'matched') {
         setMatchData({
@@ -68,6 +69,7 @@ export default function Home() {
           matchToken: result.matchToken,
           wsUrl: result.wsUrl,
           playerId: result.playerId,
+          mode: result.mode,
         })
         setStatus('ready')
       } else if (result.status === 'queued') {
@@ -98,12 +100,17 @@ export default function Home() {
   return (
     <div style={containerStyle}>
       <h1 style={titleStyle}>Space Invaders</h1>
-      <p style={subtitleStyle}>Cooperative 2-player game</p>
+      <p style={subtitleStyle}>Choose your mode</p>
 
       {status === 'idle' && (
-        <button onClick={joinQueue} style={buttonStyle}>
-          Play
-        </button>
+        <div style={modeButtonsStyle}>
+          <button onClick={() => joinQueue('solo')} style={buttonStyle}>
+            Single Player
+          </button>
+          <button onClick={() => joinQueue('coop')} style={buttonStyle}>
+            Multiplayer
+          </button>
+        </div>
       )}
 
       {status === 'joining' && (
@@ -171,6 +178,13 @@ const subtitleStyle: React.CSSProperties = {
   color: '#666',
   marginBottom: '3rem',
   fontSize: '1rem',
+}
+
+const modeButtonsStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '1.5rem',
+  flexWrap: 'wrap',
+  justifyContent: 'center',
 }
 
 const buttonStyle: React.CSSProperties = {
