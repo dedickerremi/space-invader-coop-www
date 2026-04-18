@@ -17,11 +17,13 @@ import {
   getLogicalHeight,
 } from '@/core'
 import type { GameState, GameOverSummary, Bullet, GameMode } from '@/core'
+import { SignInHint } from '@/components/SignInHint'
 
 // --- Types ---
 
 type PlayerHud = {
   id: string
+  displayName?: string
   lives: number
   alive: boolean
   respawnTimer: number
@@ -43,6 +45,8 @@ type GameCanvasProps = {
   matchId?: string
   playerId?: string
   mode?: GameMode
+  /** Clerk session JWT getter. Returns null for signed-out/guest sessions. */
+  getAuthToken?: () => Promise<string | null>
 }
 
 // --- Constants ---
@@ -58,7 +62,7 @@ const VIBRATE_MS = 50
 
 // --- Component ---
 
-export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop' }: GameCanvasProps) {
+export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop', getAuthToken }: GameCanvasProps) {
   const router = useRouter()
   const gameViewContainerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
@@ -245,6 +249,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       const streaks = state.killStreaks ?? {}
       const players: PlayerHud[] = (state.players ?? []).map((p) => ({
         id: p.id,
+        displayName: p.displayName,
         lives: p.lives ?? 0,
         alive: p.alive,
         respawnTimer: p.respawnTimer ?? 0,
@@ -305,7 +310,25 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     )
     bridgeRef.current = bridge
 
-    client.connect(effectiveWsUrl, { token: matchToken, matchId, playerId, mode })
+    // Resolve Clerk session token (null for guests) then connect.
+    ;(async () => {
+      let authToken: string | null = null
+      if (getAuthToken) {
+        try {
+          authToken = await getAuthToken()
+        } catch {
+          authToken = null
+        }
+      }
+      if (cancelled) return
+      client.connect(effectiveWsUrl, {
+        token: matchToken,
+        matchId,
+        playerId,
+        mode,
+        ...(authToken ? { authToken } : {}),
+      })
+    })()
 
     return () => {
       cancelled = true
@@ -314,7 +337,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       clientRef.current = null
       bridgeRef.current = null
     }
-  }, [matchToken, matchId, playerId, wsUrl, mode, router, togglePause])
+  }, [matchToken, matchId, playerId, wsUrl, mode, router, togglePause, getAuthToken])
 
   // --- Initialize Renderer (uses backend meta for size; getGameMeta() for drawing) ---
   useEffect(() => {
@@ -376,7 +399,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
   // Build per-player lives display
   const livesDisplay = hudPlayers.map((p) => {
     const isMe = p.id === playerId
-    const label = isMe ? 'YOU' : 'P2'
+    const label = isMe ? (p.displayName ?? 'YOU') : (p.displayName ?? `P${p.id.slice(-4)}`)
     const hearts = '♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, 3 - p.lives))
     const streak = p.killStreak ?? 0
     // Backend: every 5 consecutive kills guarantees a drop. Highlight when next kill triggers it.
@@ -556,19 +579,25 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
                   <span style={summaryHeaderStyle}>Kills</span>
                   <span style={summaryHeaderStyle}>Points</span>
                 </div>
-                {gameOverSummary.playerScores.map((s, i) => (
-                  <div key={s.playerId} style={summaryRowStyle}>
-                    <span style={s.playerId === playerId ? summaryYouStyle : undefined}>
-                      {s.playerId === playerId ? 'You' : `P${i + 1}`}
-                    </span>
-                    <span>{s.kills}</span>
-                    <span>{s.points}</span>
-                  </div>
-                ))}
+                {gameOverSummary.playerScores.map((s, i) => {
+                  const hudEntry = hudPlayers.find((p) => p.id === s.playerId)
+                  const name = hudEntry?.displayName
+                  const isMe = s.playerId === playerId
+                  return (
+                    <div key={s.playerId} style={summaryRowStyle}>
+                      <span style={isMe ? summaryYouStyle : undefined}>
+                        {isMe ? (name ? `You (${name})` : 'You') : (name ?? `P${i + 1}`)}
+                      </span>
+                      <span>{s.kills}</span>
+                      <span>{s.points}</span>
+                    </div>
+                  )
+                })}
               </div>
               <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
                 <button onClick={exitGame} style={menuButtonStyle}>Return to menu</button>
               </div>
+              <SignInHint />
             </div>
           </div>
         )}

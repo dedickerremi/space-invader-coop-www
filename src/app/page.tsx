@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MatchmakingClient } from '@/core'
 import type { MatchData, GameMode } from '@/core'
+import { AuthMenu } from '@/components/AuthMenu'
 
 type MatchStatus = 'idle' | 'joining' | 'waiting' | 'ready' | 'error'
 
@@ -99,6 +100,7 @@ export default function Home() {
 
   return (
     <div style={containerStyle}>
+      <AuthMenu />
       <h1 style={titleStyle}>Space Invaders</h1>
       <p style={subtitleStyle}>Choose your mode</p>
 
