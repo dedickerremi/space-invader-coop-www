@@ -25,6 +25,7 @@ type PlayerHud = {
   lives: number
   alive: boolean
   respawnTimer: number
+  killStreak: number
 }
 
 type HudState = {
@@ -241,19 +242,25 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       const waveNumber = state.waveNumber ?? 0
       const gameOver = state.gameOver ?? false
       const gameOverSummary = state.gameOverSummary ?? null
+      const streaks = state.killStreaks ?? {}
       const players: PlayerHud[] = (state.players ?? []).map((p) => ({
         id: p.id,
         lives: p.lives ?? 0,
         alive: p.alive,
         respawnTimer: p.respawnTimer ?? 0,
+        killStreak: streaks[p.id] ?? 0,
       }))
 
       setHud((prev) => {
+        const streakChanged =
+          prev.players.length !== players.length ||
+          prev.players.some((pp, i) => pp.killStreak !== players[i]?.killStreak)
         const same =
           prev.totalPoints === totalPoints &&
           prev.lives === lives &&
           prev.waveNumber === waveNumber &&
-          prev.gameOver === gameOver
+          prev.gameOver === gameOver &&
+          !streakChanged
         if (same && (!gameOver || prev.gameOverSummary)) return prev
         return { totalPoints, lives, players, waveNumber, gameOver, gameOverSummary }
       })
@@ -371,7 +378,10 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     const isMe = p.id === playerId
     const label = isMe ? 'YOU' : 'P2'
     const hearts = '♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, 3 - p.lives))
-    return { label, hearts, isMe, alive: p.alive }
+    const streak = p.killStreak ?? 0
+    // Backend: every 5 consecutive kills guarantees a drop. Highlight when next kill triggers it.
+    const streakHot = streak > 0 && streak % 5 === 4
+    return { label, hearts, isMe, alive: p.alive, streak, streakHot }
   })
 
   return (
@@ -388,9 +398,24 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
                 style={{
                   color: p.isMe ? '#00ff88' : '#00aaff',
                   opacity: p.alive ? 1 : 0.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
                 }}
               >
-                {p.label}: {p.hearts}
+                <span>{p.label}: {p.hearts}</span>
+                {p.streak > 0 && (
+                  <span
+                    style={{
+                      color: p.streakHot ? '#ffaa00' : '#888',
+                      fontSize: '0.85em',
+                      fontWeight: p.streakHot ? 'bold' : 'normal',
+                      textShadow: p.streakHot ? '0 0 8px rgba(255, 170, 0, 0.7)' : 'none',
+                    }}
+                  >
+                    🔥{p.streak}
+                  </span>
+                )}
               </span>
             ))}
             <span style={pingStyle}>{pingMs}ms</span>
@@ -482,6 +507,17 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
                   style={{ color: p.isMe ? '#00ff88' : '#00aaff', opacity: p.alive ? 1 : 0.5 }}
                 >
                   {p.label}: {p.hearts}
+                  {p.streak > 0 && (
+                    <span
+                      style={{
+                        marginLeft: '0.3rem',
+                        color: p.streakHot ? '#ffaa00' : '#888',
+                        fontWeight: p.streakHot ? 'bold' : 'normal',
+                      }}
+                    >
+                      🔥{p.streak}
+                    </span>
+                  )}
                 </span>
               ))}
               <span style={pingStyle}>{pingMs}ms</span>

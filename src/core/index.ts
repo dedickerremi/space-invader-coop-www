@@ -38,6 +38,8 @@ export type {
   Enemy,
   EnemyBullet,
   PowerUp,
+  PowerUpKind,
+  Spark,
   PlayerScore,
   GameOverSummary,
   GameMeta,

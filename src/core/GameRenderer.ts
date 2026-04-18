@@ -160,6 +160,9 @@ export class GameRenderer {
 
     // Draw enemy bullets last so they're always visible all the way to the bottom
     this.renderEnemyBullets(state)
+
+    // Sparks on top of everything (bullet collisions, etc.)
+    this.renderSparks(state)
   }
 
   /**
@@ -291,31 +294,58 @@ export class GameRenderer {
       // Reset alpha
       ctx.globalAlpha = 1.0
 
-      // Active power-up aura
-      if (player.activePowerUp) {
-        const auraColor = player.activePowerUp === 'speed' ? '#ffdd00' : '#00ddff'
-        const auraAlpha = 0.3 + 0.2 * Math.sin(now / 150)
-        ctx.strokeStyle = auraColor
-        ctx.lineWidth = 2
-        ctx.globalAlpha = auraAlpha
-        ctx.strokeRect(
-          drawX - 4, drawY - 4,
-          m.playerWidth + 8, m.playerHeight + 8,
-        )
+      // Speed boost: motion trail behind ship
+      if ((player.speedBoostTimer ?? 0) > 0) {
+        const trailAlpha = 0.4 + 0.2 * Math.sin(now / 80)
+        ctx.globalAlpha = trailAlpha
+        ctx.fillStyle = '#ffdd00'
+        for (let i = 1; i <= 3; i++) {
+          ctx.globalAlpha = trailAlpha * (1 - i / 4)
+          ctx.fillRect(drawX + 2, drawY + m.playerHeight + i * 3, m.playerWidth - 4, 2)
+        }
         ctx.globalAlpha = 1.0
       }
 
-      // Player label + lives + power-up indicator
+      // Double-shot: yellow tint outline
+      if ((player.doubleShotTimer ?? 0) > 0) {
+        ctx.strokeStyle = '#ffdd00'
+        ctx.lineWidth = 2
+        ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now / 120)
+        ctx.strokeRect(drawX - 2, drawY - 2, m.playerWidth + 4, m.playerHeight + 4)
+        ctx.globalAlpha = 1.0
+      }
+
+      // Shield: cyan ring around ship
+      if ((player.shieldTimer ?? 0) > 0) {
+        const cx = player.x
+        const cy = playerY
+        const r = Math.max(m.playerWidth, m.playerHeight) * 0.85
+        // Pulse stronger when shield is about to expire (< 30 ticks = 1s)
+        const lowTime = player.shieldTimer < 30
+        const pulse = lowTime ? 0.5 + 0.5 * Math.sin(now / 60) : 0.7 + 0.3 * Math.sin(now / 200)
+        ctx.strokeStyle = '#00ddff'
+        ctx.lineWidth = 2
+        ctx.shadowColor = '#00ddff'
+        ctx.shadowBlur = 12
+        ctx.globalAlpha = pulse
+        ctx.beginPath()
+        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.shadowBlur = 0
+        ctx.globalAlpha = 1.0
+      }
+
+      // Player label + lives + active buff timers
       ctx.fillStyle = '#fff'
       ctx.font = '10px JetBrains Mono, monospace'
       ctx.textAlign = 'center'
       const label = isMe ? 'YOU' : `P${index + 1}`
       let statusLine = `${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`
-      if (player.activePowerUp) {
-        const icon = player.activePowerUp === 'speed' ? '⚡' : '🔱'
-        const secs = Math.ceil((player.powerUpTimer ?? 0) / 30)
-        statusLine += ` ${icon}${secs}s`
-      }
+      const buffs: string[] = []
+      if ((player.shieldTimer ?? 0) > 0) buffs.push(`🛡${Math.ceil(player.shieldTimer / 30)}s`)
+      if ((player.doubleShotTimer ?? 0) > 0) buffs.push(`🔱${Math.ceil(player.doubleShotTimer / 30)}s`)
+      if ((player.speedBoostTimer ?? 0) > 0) buffs.push(`⚡${Math.ceil(player.speedBoostTimer / 30)}s`)
+      if (buffs.length > 0) statusLine += `  ${buffs.join(' ')}`
       ctx.fillText(statusLine, player.x, playerY + m.playerHeight / 2 + 14)
     })
 
@@ -415,27 +445,88 @@ export class GameRenderer {
     const powerUps = state.powerUps ?? []
     if (powerUps.length === 0) return
 
-    ctx.imageSmoothingEnabled = false
     const elapsed = performance.now() - this.startTime
     const bob = Math.sin(elapsed / 200) * 2
+    const half = m.powerUpSize / 2
 
-    for (const pu of powerUps) {
-      const sprite = pu.kind === 'speed'
-        ? this.sprites.powerUpSpeed
-        : this.sprites.powerUpMultishot
-      const glowColor = pu.kind === 'speed'
-        ? 'rgba(255, 221, 0, 0.7)'
-        : 'rgba(0, 221, 255, 0.7)'
-      const half = m.powerUpSize / 2
-
-      ctx.shadowColor = glowColor
-      ctx.shadowBlur = 16
-      ctx.drawImage(sprite, pu.x - half, pu.y - half + bob, m.powerUpSize, m.powerUpSize)
-      ctx.shadowBlur = 0
-      ctx.drawImage(sprite, pu.x - half, pu.y - half + bob, m.powerUpSize, m.powerUpSize)
+    const STYLE: Record<string, { color: string; glyph: string }> = {
+      extra_life:    { color: '#ff5577', glyph: '♥' },
+      double_shot:   { color: '#ffdd00', glyph: '⫶' },
+      speed_boost:   { color: '#33aaff', glyph: '⚡' },
+      shield:        { color: '#00ddff', glyph: '◉' },
+      points_bonus:  { color: '#ffcc00', glyph: '$' },
     }
 
+    for (const pu of powerUps) {
+      const style = STYLE[pu.kind] ?? { color: '#ffffff', glyph: '?' }
+      const cx = pu.x
+      const cy = pu.y + bob
+
+      // Glow halo
+      ctx.shadowColor = style.color
+      ctx.shadowBlur = 14
+      ctx.fillStyle = style.color
+      ctx.globalAlpha = 0.25
+      ctx.beginPath()
+      ctx.arc(cx, cy, half + 2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.shadowBlur = 0
+      ctx.globalAlpha = 1.0
+
+      // Filled badge
+      ctx.fillStyle = style.color
+      ctx.beginPath()
+      ctx.arc(cx, cy, half, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Inner darker disc for contrast
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.85)'
+      ctx.beginPath()
+      ctx.arc(cx, cy, half - 3, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Glyph
+      ctx.fillStyle = style.color
+      ctx.font = `bold ${Math.floor(m.powerUpSize * 0.65)}px JetBrains Mono, monospace`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(style.glyph, cx, cy + 1)
+      ctx.textBaseline = 'alphabetic'
+    }
+  }
+
+  private renderSparks(state: GameState): void {
+    const sparks = state.sparks ?? []
+    if (sparks.length === 0) return
+
+    const ctx = this.ctx
+    ctx.save()
     ctx.imageSmoothingEnabled = true
+
+    for (const sp of sparks) {
+      const fade = sp.life > 0 ? Math.max(0, Math.min(1, sp.ttl / sp.life)) : 0
+      if (fade <= 0) continue
+      const radius = 3 + (1 - fade) * 7
+
+      // Outer glow halo
+      ctx.globalAlpha = fade * 0.4
+      ctx.fillStyle = '#ffaa00'
+      ctx.shadowColor = '#ffaa00'
+      ctx.shadowBlur = 14
+      ctx.beginPath()
+      ctx.arc(sp.x, sp.y, radius * 1.6, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Bright core
+      ctx.globalAlpha = fade
+      ctx.fillStyle = '#ffe066'
+      ctx.shadowBlur = 0
+      ctx.beginPath()
+      ctx.arc(sp.x, sp.y, radius * 0.6, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    ctx.restore()
   }
 
   private renderPausedByOther(): void {
