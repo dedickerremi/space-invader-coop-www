@@ -14,9 +14,17 @@ export type Player = {
   lives: number
   respawnTimer: number     // ticks until respawn (0 = not respawning)
   invincibleTimer: number  // ticks of invincibility remaining (0 = vulnerable)
-  activePowerUp: string    // "" = none, "speed", "multishot"
-  powerUpTimer: number     // ticks remaining
+  doubleShotTimer: number  // ticks remaining (0 = inactive)
+  speedBoostTimer: number  // ticks remaining (0 = inactive)
+  shieldTimer: number      // ticks remaining (0 = inactive)
 }
+
+export type PowerUpKind =
+  | 'extra_life'
+  | 'double_shot'
+  | 'speed_boost'
+  | 'shield'
+  | 'points_bonus'
 
 export type Bullet = {
   x: number
@@ -40,7 +48,7 @@ export type EnemyBullet = {
 export type PowerUp = {
   x: number
   y: number
-  kind: 'speed' | 'multishot'
+  kind: PowerUpKind
 }
 
 export type Spark = {
@@ -88,9 +96,11 @@ export type GameState = {
   enemyBullets: EnemyBullet[]
   enemies: Enemy[]
   powerUps: PowerUp[]
+  sparks: Spark[]
   lives: number
   points: Record<string, number>
   kills: Record<string, number>
+  killStreaks: Record<string, number>
   waveNumber: number
   started: boolean
   paused: boolean
