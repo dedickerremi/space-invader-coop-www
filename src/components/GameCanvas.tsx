@@ -8,7 +8,6 @@ import {
   InputBridge,
   DesktopInputAdapter,
   MobileInputAdapter,
-  createMobileMovementConverter,
   fetchGameMeta,
   setGameMeta,
   getDefaultMeta,
@@ -67,6 +66,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
   const gameViewContainerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const touchPadRef = useRef<HTMLDivElement>(null)
   const clientRef = useRef<GameClient | null>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
   const bridgeRef = useRef<InputBridge | null>(null)
@@ -374,14 +374,9 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     const bridge = bridgeRef.current
     if (!bridge) return
 
-    const touchTarget = isMobile ? canvasWrapperRef.current : null
+    const touchTarget = isMobile ? touchPadRef.current : null
     if (isMobile && touchTarget) {
-      const getRect = () => {
-        const r = touchTarget.getBoundingClientRect()
-        return { width: r.width, height: r.height, left: r.left, top: r.top }
-      }
-      const pixelToLogical = createMobileMovementConverter(getRect)
-      const adapter = new MobileInputAdapter(bridge, touchTarget, pixelToLogical)
+      const adapter = new MobileInputAdapter(bridge, touchTarget)
       adapterRef.current = adapter
       return () => {
         adapter.destroy()
@@ -465,10 +460,8 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
                 width: '100%',
                 height: '100%',
                 overflow: 'hidden',
-                touchAction: 'none',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                flexDirection: 'column',
               }
             : {}),
         }}
@@ -478,9 +471,9 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           style={
             isMobile
               ? {
+                  flex: 1,
+                  minHeight: 0,
                   maxWidth: '100%',
-                  maxHeight: '100%',
-                  touchAction: 'none',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -617,24 +610,12 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
             </div>
           </div>
         )}
-        {/* On mobile: status + hint as bottom overlay */}
+        {/* On mobile: dedicated touch pad at the bottom (outside the canvas). */}
         {isMobile && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              zIndex: 10,
-              padding: '0.5rem 0.75rem',
-              background: 'linear-gradient(to top, rgba(10,10,15,0.85) 0%, transparent 100%)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '0.25rem',
-              pointerEvents: 'none',
-            }}
-          >
+          <div ref={touchPadRef} style={touchPadStyle}>
+            <span style={touchPadTrackStyle} aria-hidden>
+              ◀ &nbsp;━━━━━━━━━━ &nbsp;▶
+            </span>
             <span
               style={{
                 fontSize: '0.75rem',
@@ -648,8 +629,8 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
             >
               {statusText}
             </span>
-            <span style={{ fontSize: '0.6rem', color: '#444' }}>
-              Glisse en bas pour bouger • Tir auto • 2 doigts = pause
+            <span style={{ fontSize: '0.6rem', color: '#666' }}>
+              Glisse ici pour bouger • Tir auto • 2 doigts = pause
             </span>
           </div>
         )}
@@ -842,4 +823,28 @@ const kbdStyle: React.CSSProperties = {
   borderRadius: '4px',
   padding: '0.2em 0.5em',
   margin: '0 0.2em',
+}
+
+const touchPadStyle: React.CSSProperties = {
+  flex: '0 0 auto',
+  height: 110,
+  padding: '0.5rem 0.75rem',
+  background: '#0d0d14',
+  borderTop: '1px solid #222',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.3rem',
+  touchAction: 'none',
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
+  pointerEvents: 'auto',
+}
+
+const touchPadTrackStyle: React.CSSProperties = {
+  color: '#444',
+  letterSpacing: '0.05em',
+  fontSize: '0.9rem',
+  fontFamily: 'JetBrains Mono, Fira Code, monospace',
 }
