@@ -74,6 +74,9 @@ export class GameRenderer {
   /** Timestamp until which to show a subtle hit/kill flash (0 = off) */
   hitFlashUntil = 0
 
+  /** Vertical camera offset in world coords (world.y = screen.y + cameraY). 0 on desktop. */
+  private cameraY = 0
+
   constructor(canvas: HTMLCanvasElement, config?: RendererConfig) {
     const meta = getGameMeta()
     this.width = config?.width ?? meta.gameWidth
@@ -116,39 +119,43 @@ export class GameRenderer {
     const ctx = this.ctx
     const state = this.state
 
-    // Clear with background
+    // Clear with background (viewport space)
     ctx.fillStyle = this.colors.background
     ctx.fillRect(0, 0, this.width, this.height)
 
-    // Draw star field
+    // Draw star field (viewport space — backdrop stays fixed)
     this.renderStars()
 
     if (!state) return
 
-    // Not started yet — waiting screen
+    // Not started yet — waiting screen (viewport space)
     if (!state.started) {
       this.renderWaiting(state)
       return
     }
 
-    // Draw players
+    // Track camera (vertical follow-player) if viewport is shorter than world
+    this.updateCamera(state)
+
+    // World-space rendering (all game entities positioned in logical world coords)
+    ctx.save()
+    if (this.cameraY !== 0) ctx.translate(0, -this.cameraY)
+
     this.renderPlayers(state)
-
-    // Draw player bullets (so they appear from the ship)
     this.renderBullets(state)
-
-    // Draw enemies
     this.renderEnemies(state)
-
-    // Draw power-ups (falling collectibles)
     this.renderPowerUps(state)
+    this.renderEnemyBullets(state)
+    this.renderSparks(state)
 
-    // Draw pause indicator (when other player paused and we're not showing our own menu)
+    ctx.restore()
+
+    // Viewport-space overlays
+
     if (state.paused && !this.showPauseOverlay) {
       this.renderPausedByOther()
     }
 
-    // Subtle hit/kill flash (fade out over ~80ms)
     const now = performance.now()
     if (this.hitFlashUntil > 0 && now < this.hitFlashUntil) {
       const alpha = 0.15 * ((this.hitFlashUntil - now) / 80)
@@ -157,12 +164,22 @@ export class GameRenderer {
         ctx.fillRect(0, 0, this.width, this.height)
       }
     }
+  }
 
-    // Draw enemy bullets last so they're always visible all the way to the bottom
-    this.renderEnemyBullets(state)
-
-    // Sparks on top of everything (bullet collisions, etc.)
-    this.renderSparks(state)
+  /** Smooth-follow camera so the local player sits ~75% down the viewport. */
+  private updateCamera(state: GameState): void {
+    const worldHeight = getGameMeta().gameHeight
+    if (this.height >= worldHeight) {
+      this.cameraY = 0
+      return
+    }
+    const lp = state.players.find((p) => p.id === this.localPlayerId)
+    if (!lp) return
+    const playerY = lp.y ?? getGameMeta().playerY
+    const target = playerY - this.height * 0.75
+    const clamped = Math.max(0, Math.min(worldHeight - this.height, target))
+    // Lerp toward target for smooth follow
+    this.cameraY += (clamped - this.cameraY) * 0.15
   }
 
   /**

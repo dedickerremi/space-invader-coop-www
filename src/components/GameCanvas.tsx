@@ -339,14 +339,19 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     }
   }, [matchToken, matchId, playerId, wsUrl, mode, router, togglePause, getAuthToken])
 
-  // --- Initialize Renderer (uses backend meta for size; getGameMeta() for drawing) ---
+  // Mobile: clip viewport height to 2/3 of world height so the player fills the phone screen
+  // in landscape. Camera follows the ship vertically (renderer).
+  const viewportW = getLogicalWidth()
+  const viewportH = isMobile
+    ? Math.min(getLogicalHeight(), Math.round(getLogicalHeight() * 0.67))
+    : getLogicalHeight()
+
+  // --- Initialize Renderer. Re-init when viewport size flips (desktop ↔ mobile) ---
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const w = getLogicalWidth()
-    const h = getLogicalHeight()
-    const renderer = new GameRenderer(canvas, { width: w, height: h })
+    const renderer = new GameRenderer(canvas, { width: viewportW, height: viewportH })
     rendererRef.current = renderer
     renderer.start()
 
@@ -354,7 +359,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       renderer.stop()
       rendererRef.current = null
     }
-  }, [])
+  }, [viewportW, viewportH])
 
   // Keep renderer overlay flag in sync
   useEffect(() => {
@@ -485,8 +490,8 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
         >
           <canvas
             ref={canvasRef}
-            width={getLogicalWidth()}
-            height={getLogicalHeight()}
+            width={viewportW}
+            height={viewportH}
             style={{
               ...canvasStyle,
               ...(isMobile
