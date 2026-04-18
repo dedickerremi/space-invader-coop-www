@@ -7,6 +7,8 @@
 
 export type Player = {
   id: string
+  userId?: string
+  displayName?: string
   x: number
   y: number
   directionY: -1 | 0 | 1
@@ -149,6 +151,8 @@ export type ConnectionParams = {
   matchId: string
   playerId: string
   mode: GameMode
+  /** Clerk session JWT. Optional — omit for guests. */
+  authToken?: string
 }
 
 // === MATCHMAKING ===

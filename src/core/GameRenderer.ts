@@ -259,7 +259,7 @@ export class GameRenderer {
         ctx.fillStyle = '#666'
         ctx.font = '10px JetBrains Mono, monospace'
         ctx.textAlign = 'center'
-        const label = isMe ? 'YOU' : `P${index + 1}`
+        const label = player.displayName ?? (isMe ? 'YOU' : `P${index + 1}`)
         ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, player.x, playerY + m.playerHeight / 2 + 14)
         return
       }
@@ -339,7 +339,7 @@ export class GameRenderer {
       ctx.fillStyle = '#fff'
       ctx.font = '10px JetBrains Mono, monospace'
       ctx.textAlign = 'center'
-      const label = isMe ? 'YOU' : `P${index + 1}`
+      const label = player.displayName ?? (isMe ? 'YOU' : `P${index + 1}`)
       let statusLine = `${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`
       const buffs: string[] = []
       if ((player.shieldTimer ?? 0) > 0) buffs.push(`🛡${Math.ceil(player.shieldTimer / 30)}s`)

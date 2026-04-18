@@ -74,6 +74,9 @@ export class GameClient {
       playerId: params.playerId,
       mode: params.mode,
     })
+    if (params.authToken) {
+      qs.set('authToken', params.authToken)
+    }
 
     const ws = new WebSocket(`${wsUrl}?${qs.toString()}`)
     this.ws = ws

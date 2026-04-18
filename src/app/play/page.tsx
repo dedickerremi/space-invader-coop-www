@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@clerk/nextjs'
 import { GameCanvas } from '@/components/GameCanvas'
 
 type MatchData = {
@@ -12,6 +13,8 @@ type MatchData = {
   mode?: 'solo' | 'coop'
 }
 
+const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+
 export default function PlayPage() {
   const router = useRouter()
   const [matchData, setMatchData] = useState<MatchData | null>(null)
@@ -19,11 +22,9 @@ export default function PlayPage() {
   const [statusText, setStatusText] = useState('Loading...')
 
   useEffect(() => {
-    // Get match data from session storage
     const stored = sessionStorage.getItem('matchData')
 
     if (!stored) {
-      // No match data, show error and redirect after delay
       setStatusText('No match data found. Redirecting to home...')
       setTimeout(() => {
         router.push('/')
@@ -45,12 +46,25 @@ export default function PlayPage() {
   }, [router])
 
   if (loading || !matchData) {
-    return (
-      <div style={loadingStyle}>
-        {statusText}
-      </div>
-    )
+    return <div style={loadingStyle}>{statusText}</div>
   }
+
+  return hasClerk ? (
+    <ClerkAuthedGame matchData={matchData} />
+  ) : (
+    <GameCanvas
+      matchToken={matchData.matchToken}
+      wsUrl={matchData.wsUrl}
+      matchId={matchData.matchId}
+      playerId={matchData.playerId}
+      mode={matchData.mode}
+    />
+  )
+}
+
+function ClerkAuthedGame({ matchData }: { matchData: MatchData }) {
+  const { getToken } = useAuth()
+  const getAuthToken = useCallback(() => getToken(), [getToken])
 
   return (
     <GameCanvas
@@ -59,6 +73,7 @@ export default function PlayPage() {
       matchId={matchData.matchId}
       playerId={matchData.playerId}
       mode={matchData.mode}
+      getAuthToken={getAuthToken}
     />
   )
 }
