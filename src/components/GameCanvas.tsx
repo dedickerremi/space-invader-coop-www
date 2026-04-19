@@ -16,7 +16,7 @@ import {
   getLogicalHeight,
   SHIPS,
 } from '@/core'
-import type { GameState, GameOverSummary, Bullet, GameMode, ShipKey } from '@/core'
+import type { GameState, GameOverSummary, Bullet, GameMode, ShipKey, BossKind } from '@/core'
 import { SignInHint } from '@/components/SignInHint'
 
 // --- Types ---
@@ -26,7 +26,6 @@ type PlayerHud = {
   displayName?: string
   lives: number
   alive: boolean
-  respawnTimer: number
   killStreak: number
 }
 
@@ -41,6 +40,8 @@ type HudState = {
   victory: boolean
   gameOver: boolean
   gameOverSummary: GameOverSummary | null
+  /** Boss kind while a boss fight is active, null otherwise. */
+  bossKind: BossKind | null
 }
 
 type GameCanvasProps = {
@@ -102,6 +103,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     victory: false,
     gameOver: false,
     gameOverSummary: null,
+    bossKind: null,
   })
   const [waveBanner, setWaveBanner] = useState<string | null>(null)
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -261,13 +263,13 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       const victory = state.victory ?? false
       const gameOver = state.gameOver ?? false
       const gameOverSummary = state.gameOverSummary ?? null
+      const bossKind: BossKind | null = state.boss ? state.boss.kind : null
       const streaks = state.killStreaks ?? {}
       const players: PlayerHud[] = (state.players ?? []).map((p) => ({
         id: p.id,
         displayName: p.displayName,
         lives: p.lives ?? 0,
         alive: p.alive,
-        respawnTimer: p.respawnTimer ?? 0,
         killStreak: streaks[p.id] ?? 0,
       }))
 
@@ -284,14 +286,23 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           prev.totalWaves === totalWaves &&
           prev.victory === victory &&
           prev.gameOver === gameOver &&
+          prev.bossKind === bossKind &&
           !streakChanged
         if (same && (!gameOver || prev.gameOverSummary)) return prev
 
-        // Wave / level transition banner
+        // Banners — boss takes priority; regular level/wave banners are suppressed
+        // while a boss is active (the HP bar is context enough).
+        const bossJustAppeared = !prev.bossKind && bossKind
         const levelChanged = prev.levelName && levelName && prev.levelName !== levelName
         const waveChanged =
           prev.waveNumber > 0 && waveNumber > 0 && prev.waveNumber !== waveNumber
-        if (!gameOver && (levelChanged || waveChanged)) {
+
+        if (!gameOver && bossJustAppeared) {
+          const text = `BOSS — ${bossKind.toUpperCase()}`
+          setWaveBanner(text)
+          if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current)
+          bannerTimerRef.current = setTimeout(() => setWaveBanner(null), 2200)
+        } else if (!gameOver && !bossKind && (levelChanged || waveChanged)) {
           const text = levelChanged
             ? `Level — ${levelName}`
             : `Wave ${waveNumber}${totalWaves ? `/${totalWaves}` : ''} — ${waveName}`
@@ -311,6 +322,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           victory,
           gameOver,
           gameOverSummary,
+          bossKind,
         }
       })
     })

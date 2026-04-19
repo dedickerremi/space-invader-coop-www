@@ -262,6 +262,10 @@ export type SpriteSheet = {
   patrolB: HTMLCanvasElement
   bullet: HTMLCanvasElement
   enemyBullet: HTMLCanvasElement
+  /** Orange-tinted variant — used for "aimed" bullets that track the player. */
+  enemyBulletAimed: HTMLCanvasElement
+  /** Cool bluish variant — used for "comet" bullets with a trailing effect. */
+  enemyBulletComet: HTMLCanvasElement
   powerUpSpeed: HTMLCanvasElement
   powerUpMultishot: HTMLCanvasElement
 }
@@ -302,6 +306,14 @@ export function createSpriteSheet(colors: SpriteColors, shipKey?: ShipKey): Spri
     enemyBullet: createLayeredSprite([
       { pattern: ENEMY_BULLET_SHELL_PATTERN, color: colors.enemyBullet },
       { pattern: ENEMY_BULLET_CORE_PATTERN, color: '#fff1d6' },
+    ]),
+    enemyBulletAimed: createLayeredSprite([
+      { pattern: ENEMY_BULLET_SHELL_PATTERN, color: '#ff9a1f' },
+      { pattern: ENEMY_BULLET_CORE_PATTERN, color: '#ffe8a8' },
+    ]),
+    enemyBulletComet: createLayeredSprite([
+      { pattern: ENEMY_BULLET_SHELL_PATTERN, color: '#6fa8ff' },
+      { pattern: ENEMY_BULLET_CORE_PATTERN, color: '#e8f4ff' },
     ]),
     powerUpSpeed: createSprite(POWERUP_SPEED_PATTERN, '#ffdd00'),
     powerUpMultishot: createSprite(POWERUP_MULTISHOT_PATTERN, '#00ddff'),
