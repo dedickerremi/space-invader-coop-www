@@ -14,7 +14,6 @@ export type Player = {
   directionY: -1 | 0 | 1
   alive: boolean
   lives: number
-  respawnTimer: number     // ticks until respawn (0 = not respawning)
   invincibleTimer: number  // ticks of invincibility remaining (0 = vulnerable)
   doubleShotTimer: number  // ticks remaining (0 = inactive)
   speedBoostTimer: number  // ticks remaining (0 = inactive)
@@ -40,11 +39,28 @@ export type Enemy = {
   type: 'static' | 'patrol'
 }
 
+export type EnemyBulletKind = 'aimed' | 'comet' | ''
+
 export type EnemyBullet = {
   x: number
   y: number
   dx: number
   dy: number
+  /** Optional — absent on existing bullet types (backward compatible). */
+  kind?: EnemyBulletKind
+}
+
+export type BossKind = 'sentinel' | 'warden' | 'citadel' | 'nexus'
+
+export type Boss = {
+  kind: BossKind
+  x: number
+  y: number
+  hp: number
+  maxHp: number
+  phase: number
+  /** Citadel/Nexus only — true while the boss is invulnerable. */
+  shieldActive?: boolean
 }
 
 export type PowerUp = {
@@ -108,6 +124,8 @@ export type GameState = {
   waveName: string
   totalWaves: number
   victory?: boolean
+  /** Present during a boss fight, absent (or null) otherwise. */
+  boss?: Boss | null
   started: boolean
   paused: boolean
   pausedBy: string | null

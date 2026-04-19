@@ -3,7 +3,7 @@
 // Framework-agnostic: pure TypeScript, uses Canvas API only
 // ============================================================
 
-import type { GameState } from './types'
+import type { Boss, GameState } from './types'
 import { getGameMeta } from './gameMeta'
 import { createSpriteSheet, generateStars, generateNebula } from './Sprites'
 import type { SpriteSheet, Star } from './Sprites'
@@ -180,6 +180,7 @@ export class GameRenderer {
     this.renderPlayers(state)
     this.renderBullets(state)
     this.renderEnemies(state)
+    if (state.boss) this.renderBoss(state.boss)
     this.renderPowerUps(state)
     this.renderEnemyBullets(state)
     this.renderSparks(state)
@@ -187,6 +188,7 @@ export class GameRenderer {
     ctx.restore()
 
     // Viewport-space overlays
+    if (state.boss) this.renderBossHud(state.boss)
 
     if (state.paused && !this.showPauseOverlay) {
       this.renderPausedByOther()
@@ -384,31 +386,21 @@ export class GameRenderer {
 
       const playerY = player.y ?? m.playerY
 
-      // --- Dead player: show respawn countdown (can move, cannot shoot) ---
+      // --- Dead player (permadead: 0 lives left). Instant-respawn feature means
+      //     a non-zero life-count player is always rendered alive with an
+      //     invincibility flicker handled below. ---
       if (!player.alive) {
         const drawX = player.x - m.playerWidth / 2
         const drawY = playerY - m.playerHeight / 2
 
-        if (player.lives > 0) {
-          ctx.globalAlpha = 0.25
-          ctx.drawImage(this.sprites.playerDead, drawX, drawY, m.playerWidth, m.playerHeight)
-          ctx.globalAlpha = 1.0
+        ctx.globalAlpha = 0.15
+        ctx.drawImage(this.sprites.playerDead, drawX, drawY, m.playerWidth, m.playerHeight)
+        ctx.globalAlpha = 1.0
 
-          const seconds = Math.ceil(player.respawnTimer / 30)
-          ctx.fillStyle = '#ffaa00'
-          ctx.font = '14px JetBrains Mono, monospace'
-          ctx.textAlign = 'center'
-          ctx.fillText(`${seconds}s`, player.x, playerY - m.playerHeight / 2 - 8)
-        } else {
-          ctx.globalAlpha = 0.15
-          ctx.drawImage(this.sprites.playerDead, drawX, drawY, m.playerWidth, m.playerHeight)
-          ctx.globalAlpha = 1.0
-
-          ctx.fillStyle = '#ff4444'
-          ctx.font = '16px JetBrains Mono, monospace'
-          ctx.textAlign = 'center'
-          ctx.fillText('DEAD', player.x, playerY - m.playerHeight / 2 - 8)
-        }
+        ctx.fillStyle = '#ff4444'
+        ctx.font = '16px JetBrains Mono, monospace'
+        ctx.textAlign = 'center'
+        ctx.fillText('DEAD', player.x, playerY - m.playerHeight / 2 - 8)
 
         ctx.fillStyle = '#666'
         ctx.font = '10px JetBrains Mono, monospace'
@@ -654,18 +646,44 @@ export class GameRenderer {
     const bullets = state.enemyBullets ?? []
     if (bullets.length === 0) return
 
+    const w = m.enemyBulletWidth
+    const h = m.enemyBulletHeight
+
     ctx.imageSmoothingEnabled = false
-    ctx.shadowColor = ENEMY_BULLET_GLOW
-    ctx.shadowBlur = 8
 
     for (const b of bullets) {
-      ctx.drawImage(
-        this.sprites.enemyBullet,
-        b.x - m.enemyBulletWidth / 2,
-        b.y - m.enemyBulletHeight / 2,
-        m.enemyBulletWidth,
-        m.enemyBulletHeight,
-      )
+      let sprite: HTMLCanvasElement
+      let glow: string
+
+      if (b.kind === 'aimed') {
+        sprite = this.sprites.enemyBulletAimed
+        glow = 'rgba(255, 154, 31, 0.65)'
+      } else if (b.kind === 'comet') {
+        sprite = this.sprites.enemyBulletComet
+        glow = 'rgba(111, 168, 255, 0.7)'
+
+        // Motion trail — 4 fading copies opposite velocity vector.
+        const mag = Math.hypot(b.dx, b.dy) || 1
+        const nx = -b.dx / mag
+        const ny = -b.dy / mag
+        ctx.shadowColor = glow
+        ctx.shadowBlur = 10
+        for (let i = 4; i >= 1; i--) {
+          const alpha = 0.45 * (1 - i / 5)
+          const tx = b.x + nx * i * 5
+          const ty = b.y + ny * i * 5
+          ctx.globalAlpha = alpha
+          ctx.drawImage(sprite, tx - w / 2, ty - h / 2, w, h)
+        }
+        ctx.globalAlpha = 1
+      } else {
+        sprite = this.sprites.enemyBullet
+        glow = ENEMY_BULLET_GLOW
+      }
+
+      ctx.shadowColor = glow
+      ctx.shadowBlur = 8
+      ctx.drawImage(sprite, b.x - w / 2, b.y - h / 2, w, h)
     }
 
     ctx.shadowBlur = 0
@@ -759,6 +777,297 @@ export class GameRenderer {
       ctx.fill()
     }
 
+    ctx.restore()
+  }
+
+  // --- Bosses ---
+
+  private renderBoss(boss: Boss): void {
+    const now = performance.now()
+    switch (boss.kind) {
+      case 'sentinel': this.renderSentinel(boss, now); break
+      case 'warden':   this.renderWarden(boss, now); break
+      case 'citadel':  this.renderCitadel(boss, now); break
+      case 'nexus':    this.renderNexus(boss, now); break
+    }
+  }
+
+  private renderSentinel(boss: Boss, now: number): void {
+    const ctx = this.ctx
+    const cx = boss.x
+    const cy = boss.y + Math.sin(now / 600) * 2
+    const w = 80, h = 50
+    const color = '#ff4d55'
+
+    ctx.save()
+    // Chassis with glow
+    ctx.shadowColor = 'rgba(255, 77, 85, 0.7)'
+    ctx.shadowBlur = 22
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.moveTo(cx, cy - h / 2)
+    ctx.lineTo(cx + w / 2, cy)
+    ctx.lineTo(cx + w / 3, cy + h / 2)
+    ctx.lineTo(cx - w / 3, cy + h / 2)
+    ctx.lineTo(cx - w / 2, cy)
+    ctx.closePath()
+    ctx.fill()
+    ctx.shadowBlur = 0
+
+    // Dark inset
+    ctx.fillStyle = '#3a0a0d'
+    ctx.fillRect(cx - 18, cy - 9, 36, 18)
+
+    // Eye ports (pulse)
+    const pulse = 0.7 + 0.3 * Math.sin(now / 200)
+    ctx.fillStyle = `rgba(255, 220, 85, ${pulse})`
+    ctx.fillRect(cx - 12, cy - 4, 7, 7)
+    ctx.fillRect(cx + 5, cy - 4, 7, 7)
+
+    // Thrusters
+    ctx.fillStyle = '#ffb347'
+    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 60)
+    ctx.fillRect(cx - 18, cy + h / 2 - 2, 6, 6)
+    ctx.fillRect(cx + 12, cy + h / 2 - 2, 6, 6)
+    ctx.restore()
+  }
+
+  private renderWarden(boss: Boss, now: number): void {
+    const ctx = this.ctx
+    const cx = boss.x
+    const cy = boss.y + Math.sin(now / 800) * 3
+    const w = 110, h = 55
+    const color = '#ff9933'
+
+    ctx.save()
+    ctx.shadowColor = 'rgba(255, 153, 51, 0.6)'
+    ctx.shadowBlur = 22
+
+    // Central body (wide hex)
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.moveTo(cx - w / 2 + 12, cy - h / 2)
+    ctx.lineTo(cx + w / 2 - 12, cy - h / 2)
+    ctx.lineTo(cx + w / 2, cy)
+    ctx.lineTo(cx + w / 2 - 12, cy + h / 2)
+    ctx.lineTo(cx - w / 2 + 12, cy + h / 2)
+    ctx.lineTo(cx - w / 2, cy)
+    ctx.closePath()
+    ctx.fill()
+    ctx.shadowBlur = 0
+
+    // Dark central band
+    ctx.fillStyle = '#3a1e05'
+    ctx.fillRect(cx - w / 2 + 14, cy - 6, w - 28, 12)
+
+    // Side ports (pulse bright briefly to telegraph escort spawn)
+    const portGlow = 0.5 + 0.5 * Math.sin(now / 350)
+    for (const side of [-1, 1]) {
+      const px = cx + side * (w / 2 - 4)
+      ctx.fillStyle = `rgba(255, 230, 120, ${portGlow})`
+      ctx.shadowColor = 'rgba(255, 230, 120, 0.9)'
+      ctx.shadowBlur = 10
+      ctx.beginPath()
+      ctx.arc(px, cy, 5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.shadowBlur = 0
+
+    // Row of window slits
+    ctx.fillStyle = '#ffe08a'
+    for (let i = -2; i <= 2; i++) {
+      ctx.fillRect(cx + i * 12 - 2, cy - 2, 4, 4)
+    }
+    ctx.restore()
+  }
+
+  private renderCitadel(boss: Boss, now: number): void {
+    const ctx = this.ctx
+    const cx = boss.x
+    const cy = boss.y
+    const r = 38
+    const color = '#33d9d9'
+
+    ctx.save()
+    // Outer hex ring
+    ctx.shadowColor = 'rgba(51, 217, 217, 0.55)'
+    ctx.shadowBlur = 20
+    ctx.fillStyle = color
+    ctx.beginPath()
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 2
+      const x = cx + Math.cos(a) * r
+      const y = cy + Math.sin(a) * r
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.closePath()
+    ctx.fill()
+    ctx.shadowBlur = 0
+
+    // Inner dark hex
+    ctx.fillStyle = '#062828'
+    ctx.beginPath()
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 2
+      const x = cx + Math.cos(a) * (r * 0.68)
+      const y = cy + Math.sin(a) * (r * 0.68)
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.closePath()
+    ctx.fill()
+
+    // Pulsing core
+    const corePulse = 0.7 + 0.3 * Math.sin(now / 180)
+    ctx.shadowColor = '#a8fff1'
+    ctx.shadowBlur = 14
+    ctx.fillStyle = `rgba(168, 255, 241, ${corePulse})`
+    ctx.beginPath()
+    ctx.arc(cx, cy, 10, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.shadowBlur = 0
+
+    // Shield — concentric pulsing hex halo when active
+    if (boss.shieldActive) {
+      const shieldR = r + 10 + Math.sin(now / 220) * 3
+      ctx.strokeStyle = 'rgba(120, 255, 240, 0.75)'
+      ctx.lineWidth = 2
+      ctx.shadowColor = 'rgba(120, 255, 240, 0.6)'
+      ctx.shadowBlur = 12
+      ctx.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 3) * i - Math.PI / 2
+        const x = cx + Math.cos(a) * shieldR
+        const y = cy + Math.sin(a) * shieldR
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      ctx.closePath()
+      ctx.stroke()
+      ctx.shadowBlur = 0
+    }
+    ctx.restore()
+  }
+
+  private renderNexus(boss: Boss, now: number): void {
+    const ctx = this.ctx
+    const cx = boss.x
+    const cy = boss.y
+    const r = 46
+    // Phase shifts the accent palette and animation speed.
+    const phase = Math.max(1, boss.phase ?? 1)
+    const bodyColor = phase >= 2 ? '#b645ff' : '#7a45ff'
+    const accentColor = phase >= 3 ? '#ff66cc' : '#d89eff'
+    const orbitSpeed = 1 + (phase - 1) * 0.5
+
+    ctx.save()
+    // Central core
+    ctx.shadowColor = 'rgba(130, 90, 255, 0.6)'
+    ctx.shadowBlur = 24
+    ctx.fillStyle = bodyColor
+    ctx.beginPath()
+    ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.shadowBlur = 0
+
+    // Dark inner
+    ctx.fillStyle = '#1a0830'
+    ctx.beginPath()
+    ctx.arc(cx, cy, r * 0.35, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Pulsing core
+    const corePulse = 0.6 + 0.4 * Math.sin(now / 160)
+    ctx.fillStyle = accentColor
+    ctx.shadowColor = accentColor
+    ctx.shadowBlur = 14
+    ctx.beginPath()
+    ctx.arc(cx, cy, r * 0.22 * (0.8 + 0.2 * corePulse), 0, Math.PI * 2)
+    ctx.fill()
+    ctx.shadowBlur = 0
+
+    // Orbiting satellites — count grows with phase
+    const satCount = 2 + phase
+    const t = (now / 900) * orbitSpeed
+    ctx.fillStyle = accentColor
+    ctx.shadowColor = accentColor
+    ctx.shadowBlur = 10
+    for (let i = 0; i < satCount; i++) {
+      const a = t + (Math.PI * 2 * i) / satCount
+      const sx = cx + Math.cos(a) * r
+      const sy = cy + Math.sin(a) * r * 0.55
+      ctx.beginPath()
+      ctx.arc(sx, sy, 6, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.shadowBlur = 0
+
+    if (boss.shieldActive) {
+      const shieldR = r + 12 + Math.sin(now / 200) * 4
+      ctx.strokeStyle = 'rgba(220, 180, 255, 0.6)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.arc(cx, cy, shieldR, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  private renderBossHud(boss: Boss): void {
+    const ctx = this.ctx
+    const barW = Math.min(this.width - 40, 520)
+    const barH = 8
+    const padX = 12
+    const padY = 8
+    const blockW = barW + padX * 2
+    const blockH = 44
+    const x = (this.width - blockW) / 2
+    const y = 16
+
+    ctx.save()
+    // Backdrop
+    ctx.fillStyle = 'rgba(10, 12, 20, 0.72)'
+    ctx.fillRect(x, y, blockW, blockH)
+    ctx.strokeStyle = 'rgba(200, 80, 80, 0.55)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(x + 0.5, y + 0.5, blockW - 1, blockH - 1)
+
+    // Title
+    const name = boss.kind.toUpperCase()
+    const title = boss.phase > 1 ? `${name} — PHASE ${boss.phase}` : name
+    ctx.fillStyle = '#ffdddd'
+    ctx.font = 'bold 13px JetBrains Mono, monospace'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillText(title, x + padX, y + padY + 12)
+
+    // Shield indicator
+    if (boss.shieldActive) {
+      ctx.fillStyle = '#78fff0'
+      ctx.fillText('◉ SHIELD', x + padX + ctx.measureText(title).width + 14, y + padY + 12)
+    }
+
+    // HP numbers (right-aligned)
+    ctx.fillStyle = '#ccc'
+    ctx.font = '12px JetBrains Mono, monospace'
+    ctx.textAlign = 'right'
+    ctx.fillText(`${Math.max(0, boss.hp)} / ${boss.maxHp}`, x + blockW - padX, y + padY + 12)
+
+    // HP bar
+    const barX = x + padX
+    const barY = y + padY + 18
+    ctx.fillStyle = 'rgba(60, 20, 25, 0.9)'
+    ctx.fillRect(barX, barY, barW, barH)
+    const pct = boss.maxHp > 0 ? Math.max(0, Math.min(1, boss.hp / boss.maxHp)) : 0
+    const grad = ctx.createLinearGradient(barX, barY, barX + barW, barY)
+    grad.addColorStop(0, '#ff6a6a')
+    grad.addColorStop(1, '#ffb84d')
+    ctx.fillStyle = grad
+    ctx.fillRect(barX, barY, barW * pct, barH)
+    ctx.strokeStyle = 'rgba(255, 180, 180, 0.35)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1)
     ctx.restore()
   }
 
