@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { MatchmakingClient } from '@/core'
 import type { MatchData, GameMode } from '@/core'
 import { AuthMenu } from '@/components/AuthMenu'
+import { ShipSelector } from '@/components/ShipSelector'
 
 type MatchStatus = 'idle' | 'joining' | 'waiting' | 'ready' | 'error'
 
@@ -103,6 +104,8 @@ export default function Home() {
       <AuthMenu />
       <h1 style={titleStyle}>Space Invaders</h1>
       <p style={subtitleStyle}>Choose your mode</p>
+
+      {status === 'idle' && <ShipSelector />}
 
       {status === 'idle' && (
         <div style={modeButtonsStyle}>

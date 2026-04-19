@@ -14,8 +14,9 @@ import {
   getGameMeta,
   getLogicalWidth,
   getLogicalHeight,
+  SHIPS,
 } from '@/core'
-import type { GameState, GameOverSummary, Bullet, GameMode } from '@/core'
+import type { GameState, GameOverSummary, Bullet, GameMode, ShipKey } from '@/core'
 import { SignInHint } from '@/components/SignInHint'
 
 // --- Types ---
@@ -398,7 +399,14 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const renderer = new GameRenderer(canvas, { width: viewportW, height: viewportH })
+    // Read chosen ship from localStorage (ShipSelector persists the choice).
+    let shipKey: ShipKey | undefined
+    if (typeof window !== 'undefined') {
+      const raw = window.localStorage.getItem('shipKey')
+      if (raw && raw in SHIPS) shipKey = raw as ShipKey
+    }
+
+    const renderer = new GameRenderer(canvas, { width: viewportW, height: viewportH, shipKey })
     rendererRef.current = renderer
     renderer.start()
 
