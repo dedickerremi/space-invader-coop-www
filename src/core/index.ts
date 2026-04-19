@@ -67,7 +67,11 @@ export type {
 } from './types'
 
 // Sprites
-export { createSpriteSheet, generateStars } from './Sprites'
+export { createSpriteSheet, createLayeredSprite, generateStars } from './Sprites'
+
+// Ship catalog (for selector previews + renderer config)
+export { SHIPS, SHIP_ORDER, getShip, resolveTint } from './ships'
+export type { ShipKey, ShipDef, ShipLayer, TintName } from './ships'
 
 // Class-specific types
 export type { GameClientEventMap } from './GameClient'

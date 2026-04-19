@@ -5,8 +5,9 @@
 
 import type { GameState } from './types'
 import { getGameMeta } from './gameMeta'
-import { createSpriteSheet, generateStars } from './Sprites'
+import { createSpriteSheet, generateStars, generateNebula } from './Sprites'
 import type { SpriteSheet, Star } from './Sprites'
+import type { ShipKey } from './ships'
 
 // --- Configuration ---
 
@@ -26,6 +27,8 @@ export type RendererConfig = {
   /** For sharp rendering on retina; logical size is unchanged */
   devicePixelRatio?: number
   colors?: Partial<RendererColors>
+  /** Which player ship sprite to use. Defaults to 'fighter'. */
+  shipKey?: ShipKey
 }
 
 const DEFAULT_COLORS: RendererColors = {
@@ -47,6 +50,22 @@ const ENEMY_BULLET_GLOW = 'rgba(255, 102, 68, 0.5)'
 // Enemy animation: alternate frames every N ms
 const ENEMY_ANIM_INTERVAL = 600
 
+// Shooting-star tuning
+const METEOR_MIN_INTERVAL_MS = 3500
+const METEOR_MAX_INTERVAL_MS = 9000
+const METEOR_TRAIL_LEN = 90
+
+type Meteor = {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  /** Age in ms */
+  age: number
+  /** Total lifetime in ms */
+  ttl: number
+}
+
 // --- GameRenderer class ---
 
 export class GameRenderer {
@@ -57,6 +76,9 @@ export class GameRenderer {
   // Sprites
   private sprites: SpriteSheet
   private stars: Star[]
+  private nebula: HTMLCanvasElement
+  private meteors: Meteor[] = []
+  private lastMeteorSpawn = 0
   private startTime: number
 
   readonly width: number
@@ -77,6 +99,9 @@ export class GameRenderer {
   /** Vertical camera offset in world coords (world.y = screen.y + cameraY). 0 on desktop. */
   private cameraY = 0
 
+  /** Per-player animation state (lateral tilt, last X) for visual polish. */
+  private playerFx = new Map<string, { lastX: number; tiltRad: number }>()
+
   constructor(canvas: HTMLCanvasElement, config?: RendererConfig) {
     const meta = getGameMeta()
     this.width = config?.width ?? meta.gameWidth
@@ -95,21 +120,26 @@ export class GameRenderer {
     this.ctx = ctx
 
     // Generate sprites
-    this.sprites = createSpriteSheet({
-      player1: this.colors.player1,
-      player2: this.colors.player2,
-      playerDead: this.colors.playerDead,
-      enemyStatic: this.colors.enemy,
-      enemyPatrol: PATROL_COLOR,
-      bullet: this.colors.bullet,
-      enemyBullet: ENEMY_BULLET_COLOR,
-    })
+    this.sprites = createSpriteSheet(
+      {
+        player1: this.colors.player1,
+        player2: this.colors.player2,
+        playerDead: this.colors.playerDead,
+        enemyStatic: this.colors.enemy,
+        enemyPatrol: PATROL_COLOR,
+        bullet: this.colors.bullet,
+        enemyBullet: ENEMY_BULLET_COLOR,
+      },
+      config?.shipKey,
+    )
 
-    // Generate background stars
+    // Generate background stars + pre-rendered nebula texture
     this.stars = generateStars(this.width, this.height)
+    this.nebula = generateNebula(this.width, this.height)
 
     // Track time for animations
     this.startTime = performance.now()
+    this.lastMeteorSpawn = this.startTime
   }
 
   /**
@@ -123,8 +153,14 @@ export class GameRenderer {
     ctx.fillStyle = this.colors.background
     ctx.fillRect(0, 0, this.width, this.height)
 
+    // Nebula clouds behind everything (viewport space — backdrop stays fixed)
+    ctx.drawImage(this.nebula, 0, 0)
+
     // Draw star field (viewport space — backdrop stays fixed)
     this.renderStars()
+
+    // Shooting stars occasionally streak across the sky
+    this.updateAndRenderMeteors()
 
     if (!state) return
 
@@ -214,9 +250,110 @@ export class GameRenderer {
       // Twinkle: oscillate brightness over time
       const twinkle = 0.5 + 0.5 * Math.sin(elapsed * star.twinkleSpeed + star.x)
       const alpha = star.brightness * twinkle
-      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`
+      const rgb = star.tint === 1 ? '180, 210, 255' : star.tint === 2 ? '255, 220, 170' : '255, 255, 255'
+      ctx.fillStyle = `rgba(${rgb}, ${alpha})`
       ctx.fillRect(star.x, star.y, star.size, star.size)
+
+      // Rare bright stars get a soft cross-flare overlay for a cosmic feel.
+      if (star.flare && alpha > 0.3) {
+        const cx = star.x + star.size / 2
+        const cy = star.y + star.size / 2
+        const reach = 3 + twinkle * 2
+        ctx.strokeStyle = `rgba(${rgb}, ${alpha * 0.55})`
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(cx - reach, cy)
+        ctx.lineTo(cx + reach, cy)
+        ctx.moveTo(cx, cy - reach)
+        ctx.lineTo(cx, cy + reach)
+        ctx.stroke()
+      }
     }
+  }
+
+  /**
+   * Spawn a shooting star occasionally and advance existing ones.
+   * Trails fade over their lifetime; expired meteors are pruned.
+   */
+  private updateAndRenderMeteors(): void {
+    const ctx = this.ctx
+    const now = performance.now()
+
+    // Stochastic spawn at a random interval.
+    if (now - this.lastMeteorSpawn > METEOR_MIN_INTERVAL_MS) {
+      const chancePerFrame = 1 / 180 // ~3s @60fps after min interval elapsed
+      const forceSpawn = now - this.lastMeteorSpawn > METEOR_MAX_INTERVAL_MS
+      if (forceSpawn || Math.random() < chancePerFrame) {
+        this.spawnMeteor()
+        this.lastMeteorSpawn = now
+      }
+    }
+
+    if (this.meteors.length === 0) return
+
+    const survivors: Meteor[] = []
+    for (const m of this.meteors) {
+      // Assume ~60fps; advance state per frame rather than wall-clock to keep trail consistent.
+      m.age += 16.67
+      m.x += m.vx
+      m.y += m.vy
+
+      if (m.age >= m.ttl || m.x < -120 || m.x > this.width + 120 || m.y > this.height + 120) {
+        continue
+      }
+      survivors.push(m)
+
+      // Fade in quickly, then fade out across the full lifetime.
+      const fadeIn = Math.min(1, m.age / 180)
+      const life = 1 - m.age / m.ttl
+      const alpha = fadeIn * life
+
+      // Trail: line segment behind the head along the motion vector.
+      const len = METEOR_TRAIL_LEN
+      const mag = Math.hypot(m.vx, m.vy) || 1
+      const tx = m.x - (m.vx / mag) * len
+      const ty = m.y - (m.vy / mag) * len
+
+      const grad = ctx.createLinearGradient(m.x, m.y, tx, ty)
+      grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`)
+      grad.addColorStop(0.4, `rgba(180, 210, 255, ${alpha * 0.6})`)
+      grad.addColorStop(1, 'rgba(120, 160, 220, 0)')
+
+      ctx.save()
+      ctx.strokeStyle = grad
+      ctx.lineWidth = 1.5
+      ctx.shadowColor = 'rgba(200, 220, 255, 0.8)'
+      ctx.shadowBlur = 6
+      ctx.beginPath()
+      ctx.moveTo(m.x, m.y)
+      ctx.lineTo(tx, ty)
+      ctx.stroke()
+
+      // Bright head dot.
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`
+      ctx.beginPath()
+      ctx.arc(m.x, m.y, 1.5, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+    this.meteors = survivors
+  }
+
+  private spawnMeteor(): void {
+    // Launch from the top-ish, travel down-and-across at a shallow angle.
+    const fromLeft = Math.random() < 0.5
+    const startX = fromLeft ? -60 : this.width + 60
+    const startY = Math.random() * this.height * 0.5
+    const speed = 6 + Math.random() * 4
+    const angle = (Math.PI / 180) * (fromLeft ? 20 + Math.random() * 25 : 155 + Math.random() * 25)
+    this.meteors.push({
+      x: startX,
+      y: startY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      age: 0,
+      ttl: 900 + Math.random() * 700,
+    })
   }
 
   private renderWaiting(state: GameState): void {
@@ -289,8 +426,15 @@ export class GameRenderer {
         sprite = this.sprites.player2
       }
 
-      const drawX = player.x - m.playerWidth / 2
-      const drawY = playerY - m.playerHeight / 2
+      // Lateral tilt: derive velocity from X delta, lerp a small roll angle.
+      const fx = this.playerFx.get(player.id) ?? { lastX: player.x, tiltRad: 0 }
+      const dx = player.x - fx.lastX
+      const MAX_TILT = 0.28
+      const TILT_GAIN = 0.045
+      const targetTilt = Math.max(-MAX_TILT, Math.min(MAX_TILT, dx * TILT_GAIN))
+      fx.tiltRad += (targetTilt - fx.tiltRad) * 0.18
+      fx.lastX = player.x
+      this.playerFx.set(player.id, fx)
 
       // Invincibility: blink effect (flash every ~100ms)
       if (isInvincible) {
@@ -298,15 +442,25 @@ export class GameRenderer {
         ctx.globalAlpha = blink ? 1.0 : 0.3
       }
 
-      // Glow effect
       const color = isMe ? this.colors.player1 : this.colors.player2
+
+      // Thruster flame (drawn in world space, below ship, before sprite)
+      this.renderThruster(player.x, playerY, m.playerHeight, fx.tiltRad, color, now)
+
+      // Draw rotated sprite (glow pass + sharp pass)
+      ctx.save()
+      ctx.translate(player.x, playerY)
+      ctx.rotate(fx.tiltRad)
       ctx.shadowColor = isInvincible ? '#ffffff' : color
       ctx.shadowBlur = isInvincible ? 24 : 18
-      ctx.drawImage(sprite, drawX, drawY, m.playerWidth, m.playerHeight)
+      ctx.drawImage(sprite, -m.playerWidth / 2, -m.playerHeight / 2, m.playerWidth, m.playerHeight)
       ctx.shadowBlur = 0
+      ctx.drawImage(sprite, -m.playerWidth / 2, -m.playerHeight / 2, m.playerWidth, m.playerHeight)
+      ctx.restore()
 
-      // Draw sprite (on top of glow)
-      ctx.drawImage(sprite, drawX, drawY, m.playerWidth, m.playerHeight)
+      // For HUD/overlay math below
+      const drawX = player.x - m.playerWidth / 2
+      const drawY = playerY - m.playerHeight / 2
 
       // Reset alpha
       ctx.globalAlpha = 1.0
@@ -369,16 +523,67 @@ export class GameRenderer {
     ctx.imageSmoothingEnabled = true
   }
 
+  /**
+   * Draw a small flickering thruster flame below the player, aligned with the ship's tilt.
+   * Flame intensity grows with lateral speed; a subtle idle shimmer stays when stationary.
+   */
+  private renderThruster(
+    x: number,
+    y: number,
+    playerHeight: number,
+    tiltRad: number,
+    color: string,
+    now: number,
+  ): void {
+    const ctx = this.ctx
+    const speed = Math.min(1, Math.abs(tiltRad) / 0.28)
+    const flicker = 0.7 + 0.3 * Math.sin(now / 60)
+    const baseLen = playerHeight * 0.35
+    const flameLen = baseLen * (0.4 + 0.9 * speed) * flicker
+    const flameHalfW = playerHeight * 0.18 * (0.6 + 0.4 * speed)
+
+    ctx.save()
+    ctx.translate(x, y + playerHeight * 0.4)
+    ctx.rotate(tiltRad)
+
+    // Outer glow halo
+    ctx.shadowColor = color
+    ctx.shadowBlur = 14
+    ctx.fillStyle = color
+    ctx.globalAlpha = 0.35 + 0.25 * speed
+    ctx.beginPath()
+    ctx.moveTo(-flameHalfW, 0)
+    ctx.lineTo(flameHalfW, 0)
+    ctx.lineTo(0, flameLen)
+    ctx.closePath()
+    ctx.fill()
+
+    // Hot core
+    ctx.shadowBlur = 0
+    ctx.fillStyle = '#ffe8a8'
+    ctx.globalAlpha = 0.8 * flicker
+    ctx.beginPath()
+    ctx.moveTo(-flameHalfW * 0.45, 0)
+    ctx.lineTo(flameHalfW * 0.45, 0)
+    ctx.lineTo(0, flameLen * 0.7)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.globalAlpha = 1
+    ctx.restore()
+  }
+
   private renderBullets(state: GameState): void {
     const ctx = this.ctx
     const m = getGameMeta()
+    if (state.bullets.length === 0) return
 
     // Disable smoothing for crisp pixel art
     ctx.imageSmoothingEnabled = false
 
+    // Glow pass (blurred)
     ctx.shadowColor = this.colors.bullet
-    ctx.shadowBlur = 8
-
+    ctx.shadowBlur = 12
     for (const bullet of state.bullets) {
       ctx.drawImage(
         this.sprites.bullet,
@@ -389,7 +594,18 @@ export class GameRenderer {
       )
     }
 
+    // Sharp pass (no blur, on top — makes the core pop)
     ctx.shadowBlur = 0
+    for (const bullet of state.bullets) {
+      ctx.drawImage(
+        this.sprites.bullet,
+        bullet.x - m.bulletWidth / 2,
+        bullet.y - m.bulletHeight / 2,
+        m.bulletWidth,
+        m.bulletHeight,
+      )
+    }
+
     ctx.imageSmoothingEnabled = true
   }
 
