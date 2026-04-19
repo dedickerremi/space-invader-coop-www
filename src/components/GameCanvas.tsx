@@ -8,7 +8,6 @@ import {
   InputBridge,
   DesktopInputAdapter,
   MobileInputAdapter,
-  createMobileMovementConverter,
   fetchGameMeta,
   setGameMeta,
   getDefaultMeta,
@@ -35,6 +34,10 @@ type HudState = {
   lives: number
   players: PlayerHud[]
   waveNumber: number
+  levelName: string
+  waveName: string
+  totalWaves: number
+  victory: boolean
   gameOver: boolean
   gameOverSummary: GameOverSummary | null
 }
@@ -67,6 +70,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
   const gameViewContainerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const touchPadRef = useRef<HTMLDivElement>(null)
   const clientRef = useRef<GameClient | null>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
   const bridgeRef = useRef<InputBridge | null>(null)
@@ -91,9 +95,15 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     lives: 0,
     players: [],
     waveNumber: 0,
+    levelName: '',
+    waveName: '',
+    totalWaves: 0,
+    victory: false,
     gameOver: false,
     gameOverSummary: null,
   })
+  const [waveBanner, setWaveBanner] = useState<string | null>(null)
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Mobile/tablet: touch or viewport ≤ 1024px → slide + auto-fire
   useEffect(() => {
@@ -244,6 +254,10 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       const totalPoints = Object.values(state.points ?? {}).reduce((a, b) => a + b, 0)
       const lives = state.lives ?? 0
       const waveNumber = state.waveNumber ?? 0
+      const levelName = state.levelName ?? ''
+      const waveName = state.waveName ?? ''
+      const totalWaves = state.totalWaves ?? 0
+      const victory = state.victory ?? false
       const gameOver = state.gameOver ?? false
       const gameOverSummary = state.gameOverSummary ?? null
       const streaks = state.killStreaks ?? {}
@@ -264,10 +278,39 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           prev.totalPoints === totalPoints &&
           prev.lives === lives &&
           prev.waveNumber === waveNumber &&
+          prev.levelName === levelName &&
+          prev.waveName === waveName &&
+          prev.totalWaves === totalWaves &&
+          prev.victory === victory &&
           prev.gameOver === gameOver &&
           !streakChanged
         if (same && (!gameOver || prev.gameOverSummary)) return prev
-        return { totalPoints, lives, players, waveNumber, gameOver, gameOverSummary }
+
+        // Wave / level transition banner
+        const levelChanged = prev.levelName && levelName && prev.levelName !== levelName
+        const waveChanged =
+          prev.waveNumber > 0 && waveNumber > 0 && prev.waveNumber !== waveNumber
+        if (!gameOver && (levelChanged || waveChanged)) {
+          const text = levelChanged
+            ? `Level — ${levelName}`
+            : `Wave ${waveNumber}${totalWaves ? `/${totalWaves}` : ''} — ${waveName}`
+          setWaveBanner(text)
+          if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current)
+          bannerTimerRef.current = setTimeout(() => setWaveBanner(null), 1800)
+        }
+
+        return {
+          totalPoints,
+          lives,
+          players,
+          waveNumber,
+          levelName,
+          waveName,
+          totalWaves,
+          victory,
+          gameOver,
+          gameOverSummary,
+        }
       })
     })
 
@@ -336,6 +379,10 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       client.removeAllListeners()
       clientRef.current = null
       bridgeRef.current = null
+      if (bannerTimerRef.current) {
+        clearTimeout(bannerTimerRef.current)
+        bannerTimerRef.current = null
+      }
     }
   }, [matchToken, matchId, playerId, wsUrl, mode, router, togglePause, getAuthToken])
 
@@ -374,14 +421,9 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     const bridge = bridgeRef.current
     if (!bridge) return
 
-    const touchTarget = isMobile ? canvasWrapperRef.current : null
+    const touchTarget = isMobile ? touchPadRef.current : null
     if (isMobile && touchTarget) {
-      const getRect = () => {
-        const r = touchTarget.getBoundingClientRect()
-        return { width: r.width, height: r.height, left: r.left, top: r.top }
-      }
-      const pixelToLogical = createMobileMovementConverter(getRect)
-      const adapter = new MobileInputAdapter(bridge, touchTarget, pixelToLogical)
+      const adapter = new MobileInputAdapter(bridge, touchTarget)
       adapterRef.current = adapter
       return () => {
         adapter.destroy()
@@ -399,7 +441,24 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
 
   // --- Render ---
 
-  const { totalPoints, players: hudPlayers, gameOver, gameOverSummary } = hud
+  const {
+    totalPoints,
+    players: hudPlayers,
+    waveNumber,
+    levelName,
+    waveName,
+    totalWaves,
+    victory,
+    gameOver,
+    gameOverSummary,
+  } = hud
+
+  const levelLabel =
+    levelName && waveNumber
+      ? `${levelName} · Wave ${waveNumber}${totalWaves ? `/${totalWaves}` : ''}${waveName ? ` — ${waveName}` : ''}`
+      : waveNumber
+        ? `Wave ${waveNumber}${totalWaves ? `/${totalWaves}` : ''}${waveName ? ` — ${waveName}` : ''}`
+        : ''
 
   // Build per-player lives display
   const livesDisplay = hudPlayers.map((p) => {
@@ -420,6 +479,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           <h1 style={titleStyle}>Space Invaders</h1>
           <div style={scoreLivesStyle}>
             <span style={scoreStyle}>Score: {totalPoints}</span>
+            {levelLabel && <span style={levelLabelStyle}>{levelLabel}</span>}
             {livesDisplay.map((p) => (
               <span
                 key={p.label}
@@ -465,10 +525,8 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
                 width: '100%',
                 height: '100%',
                 overflow: 'hidden',
-                touchAction: 'none',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                flexDirection: 'column',
               }
             : {}),
         }}
@@ -478,9 +536,9 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           style={
             isMobile
               ? {
+                  flex: 1,
+                  minHeight: 0,
                   maxWidth: '100%',
-                  maxHeight: '100%',
-                  touchAction: 'none',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -529,6 +587,9 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
             </h1>
             <div style={{ ...scoreLivesStyle, fontSize: '0.8rem' }}>
               <span style={scoreStyle}>{totalPoints}</span>
+              {levelLabel && (
+                <span style={{ ...levelLabelStyle, fontSize: '0.7rem' }}>{levelLabel}</span>
+              )}
               {livesDisplay.map((p) => (
                 <span
                   key={p.label}
@@ -561,6 +622,13 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           </div>
         )}
 
+        {/* Wave / level transition banner */}
+        {waveBanner && !gameOver && (
+          <div style={bannerStyle}>
+            <span style={bannerTextStyle}>{waveBanner}</span>
+          </div>
+        )}
+
         {/* Pause Menu Overlay */}
         {showPauseMenu && (
           <div style={overlayStyle}>
@@ -572,12 +640,18 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           </div>
         )}
 
-        {/* Game Over Overlay */}
+        {/* Game Over / Victory Overlay */}
         {gameOver && gameOverSummary && (
           <div style={overlayStyle}>
-            <div style={menuStyle}>
-              <h2 style={menuTitleStyle}>Game Over</h2>
-              <p style={{ color: '#888', marginBottom: '1rem' }}>No lives left!</p>
+            <div style={victory ? victoryMenuStyle : menuStyle}>
+              <h2 style={victory ? victoryTitleStyle : menuTitleStyle}>
+                {victory ? 'Victory!' : 'Game Over'}
+              </h2>
+              <p style={{ color: victory ? '#ffd166' : '#888', marginBottom: '1rem' }}>
+                {victory
+                  ? `You cleared ${levelName || 'the campaign'}!`
+                  : 'No lives left!'}
+              </p>
               <div style={summaryTableStyle}>
                 <div style={summaryRowStyle}>
                   <span style={summaryHeaderStyle}>Player</span>
@@ -600,7 +674,12 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
                 })}
               </div>
               <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
-                <button onClick={exitGame} style={menuButtonStyle}>Return to menu</button>
+                <button
+                  onClick={exitGame}
+                  style={victory ? victoryButtonStyle : menuButtonStyle}
+                >
+                  Return to menu
+                </button>
               </div>
               <SignInHint />
             </div>
@@ -617,24 +696,12 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
             </div>
           </div>
         )}
-        {/* On mobile: status + hint as bottom overlay */}
+        {/* On mobile: dedicated touch pad at the bottom (outside the canvas). */}
         {isMobile && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              zIndex: 10,
-              padding: '0.5rem 0.75rem',
-              background: 'linear-gradient(to top, rgba(10,10,15,0.85) 0%, transparent 100%)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '0.25rem',
-              pointerEvents: 'none',
-            }}
-          >
+          <div ref={touchPadRef} style={touchPadStyle}>
+            <span style={touchPadTrackStyle} aria-hidden>
+              ◀ &nbsp;━━━━━━━━━━ &nbsp;▶
+            </span>
             <span
               style={{
                 fontSize: '0.75rem',
@@ -648,8 +715,8 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
             >
               {statusText}
             </span>
-            <span style={{ fontSize: '0.6rem', color: '#444' }}>
-              Glisse en bas pour bouger • Tir auto • 2 doigts = pause
+            <span style={{ fontSize: '0.6rem', color: '#666' }}>
+              Glisse ici pour bouger • Tir auto • 2 doigts = pause
             </span>
           </div>
         )}
@@ -725,6 +792,11 @@ const scoreLivesStyle: React.CSSProperties = {
 const scoreStyle: React.CSSProperties = { color: '#00ff88' }
 const livesStyle: React.CSSProperties = { color: '#ffaa00' }
 const pingStyle: React.CSSProperties = { color: '#666', fontSize: '0.75rem' }
+const levelLabelStyle: React.CSSProperties = {
+  color: '#9ad4ff',
+  fontSize: '0.85rem',
+  letterSpacing: '0.05em',
+}
 
 const summaryTableStyle: React.CSSProperties = {
   display: 'flex',
@@ -824,6 +896,24 @@ const exitButtonStyle: React.CSSProperties = {
   color: '#ff4444',
 }
 
+const victoryMenuStyle: React.CSSProperties = {
+  ...menuStyle,
+  borderColor: '#ffd166',
+  boxShadow: '0 0 30px rgba(255, 209, 102, 0.35)',
+}
+
+const victoryTitleStyle: React.CSSProperties = {
+  ...menuTitleStyle,
+  color: '#ffd166',
+  textShadow: '0 0 20px rgba(255, 209, 102, 0.6)',
+}
+
+const victoryButtonStyle: React.CSSProperties = {
+  ...menuButtonStyle,
+  borderColor: '#ffd166',
+  color: '#ffd166',
+}
+
 const statusTextStyle: React.CSSProperties = {
   marginTop: '1rem',
   fontSize: '0.875rem',
@@ -842,4 +932,50 @@ const kbdStyle: React.CSSProperties = {
   borderRadius: '4px',
   padding: '0.2em 0.5em',
   margin: '0 0.2em',
+}
+
+const bannerStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '30%',
+  left: 0,
+  right: 0,
+  display: 'flex',
+  justifyContent: 'center',
+  pointerEvents: 'none',
+  zIndex: 15,
+}
+
+const bannerTextStyle: React.CSSProperties = {
+  padding: '0.6rem 1.4rem',
+  background: 'rgba(0, 0, 0, 0.65)',
+  border: '1px solid #00ff88',
+  color: '#00ff88',
+  fontSize: '1.1rem',
+  letterSpacing: '0.2em',
+  textTransform: 'uppercase',
+  textShadow: '0 0 14px rgba(0, 255, 136, 0.6)',
+}
+
+const touchPadStyle: React.CSSProperties = {
+  flex: '0 0 auto',
+  height: 110,
+  padding: '0.5rem 0.75rem',
+  background: '#0d0d14',
+  borderTop: '1px solid #222',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.3rem',
+  touchAction: 'none',
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
+  pointerEvents: 'auto',
+}
+
+const touchPadTrackStyle: React.CSSProperties = {
+  color: '#444',
+  letterSpacing: '0.05em',
+  fontSize: '0.9rem',
+  fontFamily: 'JetBrains Mono, Fira Code, monospace',
 }

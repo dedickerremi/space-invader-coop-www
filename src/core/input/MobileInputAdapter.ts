@@ -1,66 +1,78 @@
 // ============================================================
-// MobileInputAdapter — touch (bottom 40%, slide) + auto-fire
-// Converts pixel coords to logical X via provided converter
+// MobileInputAdapter — virtual joystick (anchor-based) + auto-fire
+//   First finger contact = anchor. Finger left of anchor → moveLeft,
+//   right → moveRight, inside dead-zone → stop. Ship moves at backend
+//   speed (feels like keyboard, not drag-to-position).
+//   Two-finger tap = pause.
 // ============================================================
 
 import type { IGameController } from './GameController'
 
-/** Returns logical X when touch is in movement zone (bottom 40%), else null */
-export type PixelToLogical = (clientX: number, clientY: number) => number | null
-
 const AUTO_FIRE_INTERVAL_MS = 250
+/** CSS-pixel threshold around the anchor where movement is neutral. */
+const DIR_DEADZONE_PX = 12
 
 export class MobileInputAdapter {
   private cleanups: (() => void)[] = []
   private autoFireTimer: ReturnType<typeof setInterval> | null = null
+  private anchorPx: number | null = null
+  private currentDir: -1 | 0 | 1 = 0
 
   constructor(
     private controller: IGameController,
     private container: HTMLElement,
-    private pixelToLogical: PixelToLogical,
   ) {
     this.attach()
     this.startAutoFire()
   }
 
+  private setDir(dir: -1 | 0 | 1): void {
+    if (dir === this.currentDir) return
+    this.currentDir = dir
+    if (dir === -1) this.controller.moveLeft()
+    else if (dir === 1) this.controller.moveRight()
+    else this.controller.stop()
+  }
+
   private attach(): void {
-    const handleTouchStart = (e: TouchEvent) => {
+    const onStart = (e: TouchEvent) => {
       if (e.touches.length >= 2) {
+        this.anchorPx = null
+        this.setDir(0)
         this.controller.pause()
         return
       }
-      const t = e.touches[0]
-      const x = this.pixelToLogical(t.clientX, t.clientY)
-      if (x !== null) {
-        e.preventDefault()
-        this.controller.setTargetX(x)
-      }
+      this.anchorPx = e.touches[0].clientX
+      this.setDir(0)
+      e.preventDefault()
     }
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 0) return
-      const t = e.touches[0]
-      const x = this.pixelToLogical(t.clientX, t.clientY)
-      if (x !== null) {
-        e.preventDefault()
-        this.controller.setTargetX(x)
-      } else {
-        this.controller.setTargetX(null)
-      }
+
+    const onMove = (e: TouchEvent) => {
+      if (this.anchorPx === null || e.touches.length === 0) return
+      const dx = e.touches[0].clientX - this.anchorPx
+      let dir: -1 | 0 | 1 = 0
+      if (dx > DIR_DEADZONE_PX) dir = 1
+      else if (dx < -DIR_DEADZONE_PX) dir = -1
+      this.setDir(dir)
+      e.preventDefault()
     }
-    const handleTouchEnd = (e: TouchEvent) => {
+
+    const onEnd = (e: TouchEvent) => {
       if (e.touches.length === 0) {
-        this.controller.setTargetX(null)
+        this.anchorPx = null
+        this.setDir(0)
       }
     }
-    this.container.addEventListener('touchstart', handleTouchStart, { passive: false })
-    this.container.addEventListener('touchmove', handleTouchMove, { passive: false })
-    this.container.addEventListener('touchend', handleTouchEnd, { passive: false })
-    this.container.addEventListener('touchcancel', handleTouchEnd, { passive: false })
+
+    this.container.addEventListener('touchstart', onStart, { passive: false })
+    this.container.addEventListener('touchmove', onMove, { passive: false })
+    this.container.addEventListener('touchend', onEnd, { passive: false })
+    this.container.addEventListener('touchcancel', onEnd, { passive: false })
     this.cleanups.push(() => {
-      this.container.removeEventListener('touchstart', handleTouchStart)
-      this.container.removeEventListener('touchmove', handleTouchMove)
-      this.container.removeEventListener('touchend', handleTouchEnd)
-      this.container.removeEventListener('touchcancel', handleTouchEnd)
+      this.container.removeEventListener('touchstart', onStart)
+      this.container.removeEventListener('touchmove', onMove)
+      this.container.removeEventListener('touchend', onEnd)
+      this.container.removeEventListener('touchcancel', onEnd)
     })
   }
 
@@ -75,7 +87,8 @@ export class MobileInputAdapter {
       clearInterval(this.autoFireTimer)
       this.autoFireTimer = null
     }
-    this.controller.setTargetX(null)
+    this.anchorPx = null
+    this.setDir(0)
     this.cleanups.forEach((f) => f())
     this.cleanups = []
   }

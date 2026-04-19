@@ -18,7 +18,6 @@ export { fetchGameMeta, getGameMeta, setGameMeta, getDefaultMeta } from './gameM
 export {
   getScaleAndOffset,
   screenToLogical,
-  createMobileMovementConverter,
 } from './viewport'
 export type { ViewportRect } from './viewport'
 
@@ -28,7 +27,7 @@ export {
   DesktopInputAdapter,
   MobileInputAdapter,
 } from './input'
-export type { IGameController, GameCommand, SendMove, SendStop, SendFire, PixelToLogical } from './input'
+export type { IGameController, GameCommand, SendMove, SendStop, SendFire } from './input'
 
 // Types — re-export everything for consumers
 export type {
