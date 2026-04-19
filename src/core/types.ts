@@ -104,6 +104,10 @@ export type GameState = {
   kills: Record<string, number>
   killStreaks: Record<string, number>
   waveNumber: number
+  levelName: string
+  waveName: string
+  totalWaves: number
+  victory?: boolean
   started: boolean
   paused: boolean
   pausedBy: string | null
