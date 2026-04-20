@@ -15,6 +15,7 @@ import {
   getLogicalWidth,
   getLogicalHeight,
   SHIPS,
+  BossAudio,
 } from '@/core'
 import type { GameState, GameOverSummary, Bullet, GameMode, ShipKey, BossKind } from '@/core'
 import { SignInHint } from '@/components/SignInHint'
@@ -78,6 +79,12 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
   const bridgeRef = useRef<InputBridge | null>(null)
   const adapterRef = useRef<DesktopInputAdapter | MobileInputAdapter | null>(null)
   const lastKillsRef = useRef<number>(0)
+  const bossAudioRef = useRef<BossAudio | null>(null)
+  const prevBossRef = useRef<{ kind: BossKind | null; phase: number; shieldActive: boolean }>({
+    kind: null,
+    phase: 1,
+    shieldActive: false,
+  })
 
   // Client-side bullet prediction: phantom bullets shown instantly on SHOOT,
   // removed when server confirms or after timeout.
@@ -118,6 +125,15 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // --- Boss audio lifecycle ---
+  useEffect(() => {
+    bossAudioRef.current = new BossAudio()
+    return () => {
+      bossAudioRef.current?.dispose()
+      bossAudioRef.current = null
+    }
   }, [])
 
   // --- Refs for bridge / renderer ---
@@ -243,6 +259,27 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       if (rendererRef.current) {
         rendererRef.current.state = stateForRender
         rendererRef.current.localPlayerId = client.playerId
+      }
+
+      // Boss audio cues — compare against previous boss snapshot.
+      const audio = bossAudioRef.current
+      if (audio) {
+        const boss = state.boss ?? null
+        const prev = prevBossRef.current
+        const curKind: BossKind | null = boss ? boss.kind : null
+        const curPhase = boss?.phase ?? 1
+        const curShield = !!boss?.shieldActive
+
+        if (!prev.kind && curKind) {
+          audio.bossStart()
+        } else if (prev.kind && !curKind) {
+          audio.bossDeath()
+        } else if (prev.kind && curKind && prev.kind === curKind) {
+          if (prev.shieldActive && !curShield) audio.shieldDrop()
+          if (curPhase > prev.phase) audio.phaseChange()
+        }
+
+        prevBossRef.current = { kind: curKind, phase: curPhase, shieldActive: curShield }
       }
 
       // Hit feedback: kills increased → flash + optional vibration
