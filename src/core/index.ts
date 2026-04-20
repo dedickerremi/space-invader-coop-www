@@ -72,6 +72,9 @@ export type {
 // Sprites
 export { createSpriteSheet, createLayeredSprite, generateStars } from './Sprites'
 
+// Audio
+export { BossAudio } from './audio/BossAudio'
+
 // Ship catalog (for selector previews + renderer config)
 export { SHIPS, SHIP_ORDER, getShip, resolveTint } from './ships'
 export type { ShipKey, ShipDef, ShipLayer, TintName } from './ships'
