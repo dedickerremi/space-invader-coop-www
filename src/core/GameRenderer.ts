@@ -189,6 +189,7 @@ export class GameRenderer {
 
     // Viewport-space overlays
     if (state.boss) this.renderBossHud(state.boss)
+    this.renderScrollIndicator()
 
     if (state.paused && !this.showPauseOverlay) {
       this.renderPausedByOther()
@@ -1068,6 +1069,37 @@ export class GameRenderer {
     ctx.strokeStyle = 'rgba(255, 180, 180, 0.35)'
     ctx.lineWidth = 1
     ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1)
+    ctx.restore()
+  }
+
+  /** Mini-rail on the right edge showing the visible Y window vs the full world.
+   *  Hidden when the viewport fits the entire world (nothing to scroll). */
+  private renderScrollIndicator(): void {
+    const worldH = getGameMeta().gameHeight
+    if (this.height >= worldH) return
+
+    const ctx = this.ctx
+    const padTop = 70
+    const padBottom = 70
+    const railX = this.width - 8
+    const railY = padTop
+    const railH = Math.max(60, this.height - padTop - padBottom)
+    const railW = 3
+
+    // Pill represents the visible window [cameraY, cameraY + viewportH] mapped onto railH.
+    const pillY = railY + (this.cameraY / worldH) * railH
+    const pillH = Math.max(18, (this.height / worldH) * railH)
+
+    ctx.save()
+    // Rail (dim track)
+    ctx.fillStyle = 'rgba(200, 220, 255, 0.12)'
+    ctx.fillRect(railX, railY, railW, railH)
+
+    // Pill (visible window)
+    ctx.fillStyle = 'rgba(0, 255, 136, 0.7)'
+    ctx.shadowColor = 'rgba(0, 255, 136, 0.5)'
+    ctx.shadowBlur = 6
+    ctx.fillRect(railX, pillY, railW, pillH)
     ctx.restore()
   }
 

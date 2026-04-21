@@ -73,7 +73,6 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
   const gameViewContainerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const touchPadRef = useRef<HTMLDivElement>(null)
   const clientRef = useRef<GameClient | null>(null)
   const rendererRef = useRef<GameRenderer | null>(null)
   const bridgeRef = useRef<InputBridge | null>(null)
@@ -99,6 +98,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
   const [pausedByMe, setPausedByMe] = useState(false)
   const [pingMs, setPingMs] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
+  const [screen, setScreen] = useState({ w: 0, h: 0 })
   const [hud, setHud] = useState<HudState>({
     totalPoints: 0,
     lives: 0,
@@ -117,11 +117,13 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
 
   // Mobile/tablet: touch or viewport ≤ 1024px → slide + auto-fire
   useEffect(() => {
-    const check = () =>
+    const check = () => {
       setIsMobile(
         typeof window !== 'undefined' &&
           ('ontouchstart' in window || window.innerWidth <= 1024),
       )
+      setScreen({ w: window.innerWidth, h: window.innerHeight })
+    }
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
@@ -436,12 +438,17 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     }
   }, [matchToken, matchId, playerId, wsUrl, mode, router, togglePause, getAuthToken])
 
-  // Mobile: clip viewport height to 2/3 of world height so the player fills the phone screen
-  // in landscape. Camera follows the ship vertically (renderer).
+  // Mobile: pick viewport height so the canvas aspect ratio matches the screen
+  // aspect ratio — the canvas then fills the screen without letterboxing. If the
+  // screen is tall enough for the full world, show everything; otherwise clip
+  // and let the follow-camera reveal the rest.
   const viewportW = getLogicalWidth()
-  const viewportH = isMobile
-    ? Math.min(getLogicalHeight(), Math.round(getLogicalHeight() * 0.67))
-    : getLogicalHeight()
+  const fullH = getLogicalHeight()
+  const viewportH = (() => {
+    if (!isMobile || screen.w === 0 || screen.h === 0) return fullH
+    const fitH = Math.round(viewportW * (screen.h / screen.w))
+    return Math.min(fullH, fitH)
+  })()
 
   // --- Initialize Renderer. Re-init when viewport size flips (desktop ↔ mobile) ---
   useEffect(() => {
@@ -478,7 +485,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     const bridge = bridgeRef.current
     if (!bridge) return
 
-    const touchTarget = isMobile ? touchPadRef.current : null
+    const touchTarget = isMobile ? canvasWrapperRef.current : null
     if (isMobile && touchTarget) {
       const adapter = new MobileInputAdapter(bridge, touchTarget)
       adapterRef.current = adapter
@@ -595,10 +602,13 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
               ? {
                   flex: 1,
                   minHeight: 0,
-                  maxWidth: '100%',
+                  width: '100%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  touchAction: 'none',
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none',
                 }
               : undefined
           }
@@ -622,43 +632,30 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           />
         </div>
 
-        {/* On mobile: header overlay on top of game */}
+        {/* Mobile: minimal overlay HUD (score left, lives/streak + pause right). */}
         {isMobile && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 10,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '0.5rem 0.75rem',
-              background: 'linear-gradient(to bottom, rgba(10,10,15,0.9) 0%, transparent 100%)',
-              pointerEvents: 'none',
-            }}
-          >
-            <h1 style={{ ...titleStyle, fontSize: '0.9rem', letterSpacing: '0.1em', margin: 0 }}>
-              Space Invaders
-            </h1>
-            <div style={{ ...scoreLivesStyle, fontSize: '0.8rem' }}>
-              <span style={scoreStyle}>{totalPoints}</span>
-              {levelLabel && (
-                <span style={{ ...levelLabelStyle, fontSize: '0.7rem' }}>{levelLabel}</span>
-              )}
+          <div style={mobileHudStyle}>
+            <span style={mobileScoreStyle}>{totalPoints}</span>
+            <div style={mobileRightStyle}>
               {livesDisplay.map((p) => (
                 <span
                   key={p.label}
-                  style={{ color: p.isMe ? '#00ff88' : '#00aaff', opacity: p.alive ? 1 : 0.5 }}
+                  style={{
+                    color: p.isMe ? '#00ff88' : '#00aaff',
+                    opacity: p.alive ? 1 : 0.5,
+                    fontSize: '0.85rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                  }}
                 >
-                  {p.label}: {p.hearts}
+                  <span>{p.hearts}</span>
                   {p.streak > 0 && (
                     <span
                       style={{
-                        marginLeft: '0.3rem',
                         color: p.streakHot ? '#ffaa00' : '#888',
                         fontWeight: p.streakHot ? 'bold' : 'normal',
+                        textShadow: p.streakHot ? '0 0 6px rgba(255,170,0,0.7)' : 'none',
                       }}
                     >
                       🔥{p.streak}
@@ -666,16 +663,15 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
                   )}
                 </span>
               ))}
-              <span style={pingStyle}>{pingMs}ms</span>
+              <button
+                onClick={togglePause}
+                style={mobilePauseBtnStyle}
+                title="Pause"
+                disabled={gameOver}
+              >
+                ⏸
+              </button>
             </div>
-            <button
-              onClick={togglePause}
-              style={{ ...pauseButtonStyle, pointerEvents: 'auto' }}
-              title="Pause"
-              disabled={gameOver}
-            >
-              ⏸
-            </button>
           </div>
         )}
 
@@ -753,27 +749,15 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
             </div>
           </div>
         )}
-        {/* On mobile: dedicated touch pad at the bottom (outside the canvas). */}
-        {isMobile && (
-          <div ref={touchPadRef} style={touchPadStyle}>
-            <span style={touchPadTrackStyle} aria-hidden>
-              ◀ &nbsp;━━━━━━━━━━ &nbsp;▶
-            </span>
+        {/* Mobile: small status toast at the bottom, only when not connected. */}
+        {isMobile && status !== 'connected' && (
+          <div style={mobileToastStyle}>
             <span
               style={{
-                fontSize: '0.75rem',
-                color:
-                  status === 'connected'
-                    ? '#00ff88'
-                    : status === 'error' || status === 'ended'
-                      ? '#ff4444'
-                      : '#666',
+                color: status === 'error' || status === 'ended' ? '#ff4444' : '#cfcfcf',
               }}
             >
               {statusText}
-            </span>
-            <span style={{ fontSize: '0.6rem', color: '#666' }}>
-              Glisse ici pour bouger • Tir auto • 2 doigts = pause
             </span>
           </div>
         )}
@@ -1013,26 +997,58 @@ const bannerTextStyle: React.CSSProperties = {
   textShadow: '0 0 14px rgba(0, 255, 136, 0.6)',
 }
 
-const touchPadStyle: React.CSSProperties = {
-  flex: '0 0 auto',
-  height: 110,
-  padding: '0.5rem 0.75rem',
-  background: '#0d0d14',
-  borderTop: '1px solid #222',
+const mobileHudStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  zIndex: 10,
   display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '0.3rem',
-  touchAction: 'none',
-  userSelect: 'none',
-  WebkitUserSelect: 'none',
-  pointerEvents: 'auto',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  padding: 'max(0.5rem, env(safe-area-inset-top)) 0.75rem 0.5rem',
+  background: 'linear-gradient(to bottom, rgba(5,6,10,0.7) 0%, transparent 100%)',
+  pointerEvents: 'none',
+  fontFamily: 'JetBrains Mono, Fira Code, monospace',
 }
 
-const touchPadTrackStyle: React.CSSProperties = {
-  color: '#444',
+const mobileScoreStyle: React.CSSProperties = {
+  color: '#00ff88',
+  fontSize: '1.25rem',
+  fontWeight: 700,
   letterSpacing: '0.05em',
-  fontSize: '0.9rem',
+  textShadow: '0 0 10px rgba(0,255,136,0.6)',
+}
+
+const mobileRightStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+}
+
+const mobilePauseBtnStyle: React.CSSProperties = {
+  background: 'rgba(10,12,20,0.65)',
+  border: '1px solid rgba(0,255,136,0.45)',
+  color: '#00ff88',
+  fontSize: '0.95rem',
+  width: 32,
+  height: 32,
+  padding: 0,
+  borderRadius: 4,
+  cursor: 'pointer',
+  pointerEvents: 'auto',
+  lineHeight: 1,
+}
+
+const mobileToastStyle: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 'max(0.5rem, env(safe-area-inset-bottom))',
+  left: 0,
+  right: 0,
+  textAlign: 'center',
+  fontSize: '0.75rem',
+  padding: '0.3rem 0.75rem',
+  pointerEvents: 'none',
+  textShadow: '0 1px 2px rgba(0,0,0,0.8)',
   fontFamily: 'JetBrains Mono, Fira Code, monospace',
 }
