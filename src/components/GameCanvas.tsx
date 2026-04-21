@@ -438,6 +438,11 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     }
   }, [matchToken, matchId, playerId, wsUrl, mode, router, togglePause, getAuthToken])
 
+  // The game world is landscape (~800×600). On a portrait phone everything ends
+  // up tiny, so we ask the user to rotate. The overlay covers gameplay until
+  // the device is in landscape.
+  const isPortrait = isMobile && screen.h > screen.w
+
   // Mobile: pick viewport height so the canvas aspect ratio matches the screen
   // aspect ratio — the canvas then fills the screen without letterboxing. If the
   // screen is tall enough for the full world, show everything; otherwise clip
@@ -750,7 +755,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
           </div>
         )}
         {/* Mobile: small status toast at the bottom, only when not connected. */}
-        {isMobile && status !== 'connected' && (
+        {isMobile && status !== 'connected' && !isPortrait && (
           <div style={mobileToastStyle}>
             <span
               style={{
@@ -759,6 +764,17 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
             >
               {statusText}
             </span>
+          </div>
+        )}
+
+        {/* Mobile portrait: ask the user to rotate. The game world is landscape
+            so portrait makes sprites tiny — block until rotated. */}
+        {isPortrait && (
+          <div style={rotateOverlayStyle}>
+            <style>{`@keyframes rotateHint { 0%,40% { transform: rotate(0deg) } 60%,100% { transform: rotate(-90deg) } }`}</style>
+            <div style={rotatePhoneStyle} aria-hidden>📱</div>
+            <h2 style={rotateTitleStyle}>Tourne ton téléphone</h2>
+            <p style={rotateSubtitleStyle}>Ce jeu se joue en mode paysage</p>
           </div>
         )}
       </div>
@@ -1038,6 +1054,42 @@ const mobilePauseBtnStyle: React.CSSProperties = {
   cursor: 'pointer',
   pointerEvents: 'auto',
   lineHeight: 1,
+}
+
+const rotateOverlayStyle: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  background: '#0a0a0f',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 50,
+  padding: '2rem',
+  textAlign: 'center',
+  fontFamily: 'JetBrains Mono, Fira Code, monospace',
+}
+
+const rotatePhoneStyle: React.CSSProperties = {
+  fontSize: '4rem',
+  display: 'inline-block',
+  animation: 'rotateHint 1.8s ease-in-out infinite',
+  transformOrigin: '50% 50%',
+}
+
+const rotateTitleStyle: React.CSSProperties = {
+  color: '#00ff88',
+  fontSize: '1.4rem',
+  letterSpacing: '0.15em',
+  textTransform: 'uppercase',
+  textShadow: '0 0 14px rgba(0,255,136,0.6)',
+  margin: '1.5rem 0 0.5rem',
+}
+
+const rotateSubtitleStyle: React.CSSProperties = {
+  color: '#888',
+  fontSize: '0.9rem',
+  margin: 0,
 }
 
 const mobileToastStyle: React.CSSProperties = {
