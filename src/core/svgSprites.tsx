@@ -743,6 +743,94 @@ export function MuzzleFlash(): ReactElement {
   )
 }
 
+// --- Boss --------------------------------------------------
+
+export type BossMood = 'idle' | 'charge' | 'angry' | 'dead'
+
+export const BOSS_SVG_SIZE = { w: 96, h: 56 }
+// Visual draw size used by the renderer in SVG mode.
+export const BOSS_VISUAL_SIZE = { w: 130, h: 76 }
+
+export function BossBody({ mood = 'idle' }: { mood?: BossMood }): ReactElement {
+  const hull = mood === 'angry' ? '#dc2626' : mood === 'charge' ? '#9333ea' : '#7c3aed'
+  const shade = mood === 'angry' ? '#7f1d1d' : '#581c87'
+  const eye = mood === 'charge' ? '#fde047' : mood === 'angry' ? '#fb923c' : '#22d3ee'
+  const hot = mood !== 'idle'
+  const glow = hot ? 'url(#glow-hot)' : 'url(#glow-soft)'
+
+  if (mood === 'dead') {
+    return (
+      <svg viewBox="0 0 96 56" xmlns="http://www.w3.org/2000/svg" shapeRendering="geometricPrecision">
+        <SpriteDefs />
+        <g opacity="0.7">
+          <path d="M8 20 L20 12 L24 24 Z" fill="#7c3aed" stroke={INK} strokeWidth="1.2" />
+          <path d="M40 8 L58 14 L48 26 Z" fill="#7c3aed" stroke={INK} strokeWidth="1.2" />
+          <path d="M74 20 L88 28 L76 36 Z" fill="#7c3aed" stroke={INK} strokeWidth="1.2" />
+          <path d="M20 36 L38 38 L28 48 Z" fill="#581c87" stroke={INK} strokeWidth="1.2" />
+          <path d="M60 40 L78 42 L66 52 Z" fill="#581c87" stroke={INK} strokeWidth="1.2" />
+        </g>
+        <g filter="url(#glow-hot)">
+          <circle cx="48" cy="28" r="10" fill="#fde047" />
+          <circle cx="48" cy="28" r="4" fill="#fff" />
+        </g>
+      </svg>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 96 56" xmlns="http://www.w3.org/2000/svg" shapeRendering="geometricPrecision">
+      <SpriteDefs />
+      <path
+        d="M0 28 L16 18 L22 24 L22 32 L16 38 Z"
+        fill={hull}
+        stroke={INK}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M96 28 L80 18 L74 24 L74 32 L80 38 Z"
+        fill={hull}
+        stroke={INK}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M22 14 L36 6 L60 6 L74 14 L80 28 L74 42 L60 50 L36 50 L22 42 L16 28 Z"
+        fill={hull}
+        stroke={INK}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M28 38 L68 38 L62 48 L34 48 Z"
+        fill={shade}
+        stroke={INK}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M30 14 L48 8 L66 14 L62 20 L34 20 Z" fill="#fff" opacity="0.12" />
+      <ellipse cx="48" cy="28" rx="8" ry="6" fill={INK} />
+      <ellipse cx="48" cy="28" rx="6" ry="4.2" fill={eye} filter={glow} />
+      <ellipse cx="48" cy="28" rx="2.2" ry="1.8" fill="#fff" />
+      <rect x="18" y="26" width="6" height="4" fill={INK} />
+      <rect x="72" y="26" width="6" height="4" fill={INK} />
+      <circle cx="18" cy="28" r="1.3" fill={eye} filter={glow} />
+      <circle cx="78" cy="28" r="1.3" fill={eye} filter={glow} />
+      <circle cx="40" cy="12" r="1.2" fill={eye} filter={glow} />
+      <circle cx="56" cy="12" r="1.2" fill={eye} filter={glow} />
+      {mood === 'charge' && (
+        <g stroke="#fde047" strokeWidth="1" filter="url(#glow-hot)" opacity="0.9">
+          <path d="M48 36 L44 52 M48 36 L48 54 M48 36 L52 52" />
+        </g>
+      )}
+    </svg>
+  )
+}
+
+export function BossIdle(): ReactElement { return <BossBody mood="idle" /> }
+export function BossCharge(): ReactElement { return <BossBody mood="charge" /> }
+export function BossAngry(): ReactElement { return <BossBody mood="angry" /> }
+
 // --- Catalog (for debug page) ------------------------------
 
 export type SvgCatalogEntry = {
@@ -774,4 +862,7 @@ export const SVG_SPRITE_CATALOG: SvgCatalogEntry[] = [
   { id: 'explosion-3', group: 'FX', label: 'Explosion 3', w: 48, h: 48, element: <ExplosionFrame3 /> },
   { id: 'hit-flash', group: 'FX', label: 'Hit flash', w: 32, h: 32, element: <HitFlash /> },
   { id: 'muzzle-flash', group: 'FX', label: 'Muzzle', w: 24, h: 24, element: <MuzzleFlash /> },
+  { id: 'boss-idle', group: 'Boss', label: 'Idle', w: 96, h: 56, element: <BossIdle /> },
+  { id: 'boss-charge', group: 'Boss', label: 'Charge', w: 96, h: 56, element: <BossCharge /> },
+  { id: 'boss-angry', group: 'Boss', label: 'Angry', w: 96, h: 56, element: <BossAngry /> },
 ]

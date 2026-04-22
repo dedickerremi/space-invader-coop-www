@@ -274,6 +274,10 @@ export type SpriteSheet = {
   explosion3?: HTMLCanvasElement
   hitFlash?: HTMLCanvasElement
   muzzleFlash?: HTMLCanvasElement
+  /** Boss — only populated by the SVG sheet builder. */
+  bossIdle?: HTMLCanvasElement
+  bossCharge?: HTMLCanvasElement
+  bossAngry?: HTMLCanvasElement
 }
 
 export type SpriteColors = {

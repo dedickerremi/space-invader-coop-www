@@ -9,7 +9,12 @@ import { createSpriteSheet, generateStars, generateNebula } from './Sprites'
 import type { SpriteSheet, Star } from './Sprites'
 import { SHIPS } from './ships'
 import type { ShipKey } from './ships'
-import { ENEMY_VISUAL_SIZE, BULLET_VISUAL_SIZE, POWERUP_VISUAL_SIZE } from './svgSprites'
+import {
+  ENEMY_VISUAL_SIZE,
+  BULLET_VISUAL_SIZE,
+  POWERUP_VISUAL_SIZE,
+  BOSS_VISUAL_SIZE,
+} from './svgSprites'
 
 // --- Configuration ---
 
@@ -898,11 +903,60 @@ export class GameRenderer {
 
   private renderBoss(boss: Boss): void {
     const now = performance.now()
+    if (this.useSvgSprites && this.sprites.bossIdle && this.sprites.bossCharge && this.sprites.bossAngry) {
+      this.renderBossSvg(boss, now)
+      return
+    }
     switch (boss.kind) {
       case 'sentinel': this.renderSentinel(boss, now); break
       case 'warden':   this.renderWarden(boss, now); break
       case 'citadel':  this.renderCitadel(boss, now); break
       case 'nexus':    this.renderNexus(boss, now); break
+    }
+  }
+
+  /**
+   * SVG boss — single design with mood (idle / charge / angry) chosen
+   * from HP% and shield state. Backend kind doesn't affect the sprite
+   * (the handoff delivers one boss design); kind still drives audio
+   * and the HUD label elsewhere.
+   */
+  private renderBossSvg(boss: Boss, now: number): void {
+    const ctx = this.ctx
+    const cx = boss.x
+    const cy = boss.y + Math.sin(now / 600) * 2
+    const w = BOSS_VISUAL_SIZE.w
+    const h = BOSS_VISUAL_SIZE.h
+
+    const hpPct = boss.maxHp > 0 ? boss.hp / boss.maxHp : 1
+    const sprite =
+      boss.shieldActive ? this.sprites.bossCharge! :
+      hpPct < 0.3 ? this.sprites.bossAngry! :
+      this.sprites.bossIdle!
+
+    ctx.save()
+    ctx.imageSmoothingEnabled = true
+    ctx.shadowColor = boss.shieldActive
+      ? 'rgba(253, 224, 71, 0.6)'
+      : hpPct < 0.3
+        ? 'rgba(248, 113, 113, 0.6)'
+        : 'rgba(167, 139, 250, 0.55)'
+    ctx.shadowBlur = 22
+    ctx.drawImage(sprite, cx - w / 2, cy - h / 2, w, h)
+    ctx.restore()
+
+    // Optional shield halo when active — overlay above the sprite for read.
+    if (boss.shieldActive) {
+      ctx.save()
+      const r = Math.max(w, h) * 0.55 + Math.sin(now / 220) * 3
+      ctx.strokeStyle = 'rgba(253, 224, 71, 0.65)'
+      ctx.lineWidth = 2
+      ctx.shadowColor = 'rgba(253, 224, 71, 0.6)'
+      ctx.shadowBlur = 12
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
     }
   }
 

@@ -22,6 +22,9 @@ import {
   ExplosionFrame3,
   HitFlash,
   MuzzleFlash,
+  BossIdle,
+  BossCharge,
+  BossAngry,
   SHIP_SVG_SIZE,
   BULLET_PLAYER_SIZE,
   BULLET_ENEMY_SIZE,
@@ -30,6 +33,7 @@ import {
   EXPLOSION_SVG_SIZE,
   HIT_FLASH_SVG_SIZE,
   MUZZLE_FLASH_SVG_SIZE,
+  BOSS_SVG_SIZE,
   type ShipColors,
 } from './svgSprites'
 import { rasterizeElement, type RasterizeOptions } from './svgRasterizer'
@@ -78,6 +82,9 @@ export async function createSpriteSheetSvg(
     explosion3,
     hitFlash,
     muzzleFlash,
+    bossIdle,
+    bossCharge,
+    bossAngry,
   ] = await Promise.all([
     rasterizeElement(Ship(shipColorsFromHull(colors.player1)), size.w, size.h, options),
     rasterizeElement(Ship(shipColorsFromHull(colors.player2)), size.w, size.h, options),
@@ -137,6 +144,9 @@ export async function createSpriteSheetSvg(
     rasterizeElement(ExplosionFrame3(), EXPLOSION_SVG_SIZE.w, EXPLOSION_SVG_SIZE.h, options),
     rasterizeElement(HitFlash(), HIT_FLASH_SVG_SIZE.w, HIT_FLASH_SVG_SIZE.h, options),
     rasterizeElement(MuzzleFlash(), MUZZLE_FLASH_SVG_SIZE.w, MUZZLE_FLASH_SVG_SIZE.h, options),
+    rasterizeElement(BossIdle(), BOSS_SVG_SIZE.w, BOSS_SVG_SIZE.h, options),
+    rasterizeElement(BossCharge(), BOSS_SVG_SIZE.w, BOSS_SVG_SIZE.h, options),
+    rasterizeElement(BossAngry(), BOSS_SVG_SIZE.w, BOSS_SVG_SIZE.h, options),
   ])
 
   return {
@@ -158,6 +168,9 @@ export async function createSpriteSheetSvg(
     explosion3,
     hitFlash,
     muzzleFlash,
+    bossIdle,
+    bossCharge,
+    bossAngry,
   }
 }
 
