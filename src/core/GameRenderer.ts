@@ -835,6 +835,36 @@ export class GameRenderer {
     if (sparks.length === 0) return
 
     const ctx = this.ctx
+
+    // SVG path: 3-frame explosion animation chosen by remaining life.
+    // Sprites are 48x48 in their viewBox; we draw at ~36px to feel punchy
+    // without overpowering the entity that just got hit.
+    const f1 = this.sprites.explosion1
+    const f2 = this.sprites.explosion2
+    const f3 = this.sprites.explosion3
+    if (this.useSvgSprites && f1 && f2 && f3) {
+      const drawSize = 36
+      const half = drawSize / 2
+      ctx.save()
+      ctx.imageSmoothingEnabled = true
+      for (const sp of sparks) {
+        const fade = sp.life > 0 ? Math.max(0, Math.min(1, sp.ttl / sp.life)) : 0
+        if (fade <= 0) continue
+        // life ratio: 1 at birth → 0 at death. Pick frame as it ages.
+        const sprite = fade > 0.66 ? f1 : fade > 0.33 ? f2 : f3
+        // Slight scale-out + alpha fade so each spark eases.
+        const scale = 0.85 + (1 - fade) * 0.35
+        const w = drawSize * scale
+        const h = drawSize * scale
+        ctx.globalAlpha = fade
+        ctx.drawImage(sprite, sp.x - w / 2, sp.y - h / 2, w, h)
+      }
+      ctx.globalAlpha = 1
+      ctx.restore()
+      return
+    }
+
+    // Pixel-art path — preserved unchanged.
     ctx.save()
     ctx.imageSmoothingEnabled = true
 
