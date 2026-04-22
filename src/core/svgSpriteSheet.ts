@@ -8,15 +8,15 @@
 import type { SpriteSheet, SpriteColors } from './Sprites'
 import type { ShipKey } from './ships'
 import {
-  shipSvg,
-  enemyGruntASvg,
-  enemyGruntBSvg,
-  enemyPatrolASvg,
-  enemyPatrolBSvg,
-  bulletPlayerSvg,
-  bulletEnemySvg,
-  powerUpSpeedSvg,
-  powerUpMultishotSvg,
+  SHIP_COMPONENTS,
+  EnemyGruntA,
+  EnemyGruntB,
+  EnemyPatrolA,
+  EnemyPatrolB,
+  BulletPlayer,
+  BulletEnemy,
+  PowerUpSpeed,
+  PowerUpMultishot,
   SHIP_SVG_SIZE,
   BULLET_PLAYER_SIZE,
   BULLET_ENEMY_SIZE,
@@ -24,14 +24,13 @@ import {
   ENEMY_SVG_SIZE,
   type ShipColors,
 } from './svgSprites'
-import { rasterizeSvg, type RasterizeOptions } from './svgRasterizer'
+import { rasterizeElement, type RasterizeOptions } from './svgRasterizer'
 
 function shipColorsFromHull(hull: string): ShipColors {
   return { hull, accent: softenHex(hull), cockpit: '#fde68a', engine: '#f97316', glow: hull }
 }
 
 function softenHex(hex: string): string {
-  // Fallback "accent" — lighten the hull by blending toward white.
   const m = /^#?([0-9a-f]{6})$/i.exec(hex)
   if (!m) return hex
   const n = parseInt(m[1], 16)
@@ -47,6 +46,7 @@ export async function createSpriteSheetSvg(
   shipKey: ShipKey = 'classic',
   options?: RasterizeOptions,
 ): Promise<SpriteSheet> {
+  const Ship = SHIP_COMPONENTS[shipKey]
   const size = SHIP_SVG_SIZE[shipKey]
   const enemyA = ENEMY_SVG_SIZE.gruntA
   const patrolA = ENEMY_SVG_SIZE.patrolA
@@ -66,59 +66,59 @@ export async function createSpriteSheetSvg(
     powerUpSpeed,
     powerUpMultishot,
   ] = await Promise.all([
-    rasterizeSvg(shipSvg(shipKey, shipColorsFromHull(colors.player1)), size.w, size.h, options),
-    rasterizeSvg(shipSvg(shipKey, shipColorsFromHull(colors.player2)), size.w, size.h, options),
-    rasterizeSvg(shipSvg(shipKey, shipColorsFromHull(colors.playerDead)), size.w, size.h, options),
-    rasterizeSvg(
-      enemyGruntASvg({ body: colors.enemyStatic, shade: '#991b1b', eye: '#fde047' }),
+    rasterizeElement(Ship(shipColorsFromHull(colors.player1)), size.w, size.h, options),
+    rasterizeElement(Ship(shipColorsFromHull(colors.player2)), size.w, size.h, options),
+    rasterizeElement(Ship(shipColorsFromHull(colors.playerDead)), size.w, size.h, options),
+    rasterizeElement(
+      EnemyGruntA({ body: colors.enemyStatic, shade: '#991b1b', eye: '#fde047' }),
       enemyA.w,
       enemyA.h,
       options,
     ),
-    rasterizeSvg(
-      enemyGruntBSvg({ body: colors.enemyStatic, shade: '#991b1b', eye: '#fde047' }),
+    rasterizeElement(
+      EnemyGruntB({ body: colors.enemyStatic, shade: '#991b1b', eye: '#fde047' }),
       enemyA.w,
       enemyA.h,
       options,
     ),
-    rasterizeSvg(
-      enemyPatrolASvg({ body: colors.enemyPatrol, shade: '#86198f', eye: '#22d3ee' }),
+    rasterizeElement(
+      EnemyPatrolA({ body: colors.enemyPatrol, shade: '#86198f', eye: '#22d3ee' }),
       patrolA.w,
       patrolA.h,
       options,
     ),
-    rasterizeSvg(
-      enemyPatrolBSvg({ body: colors.enemyPatrol, shade: '#86198f', eye: '#22d3ee' }),
+    rasterizeElement(
+      EnemyPatrolB({ body: colors.enemyPatrol, shade: '#86198f', eye: '#22d3ee' }),
       patrolA.w,
       patrolA.h,
       options,
     ),
-    rasterizeSvg(
-      bulletPlayerSvg({ shell: colors.bullet, core: '#ffffff' }),
+    rasterizeElement(
+      BulletPlayer({ shell: colors.bullet, core: '#ffffff' }),
       BULLET_PLAYER_SIZE.w,
       BULLET_PLAYER_SIZE.h,
       options,
     ),
-    rasterizeSvg(
-      bulletEnemySvg({ shell: colors.enemyBullet, core: '#fef3c7' }),
+    rasterizeElement(
+      BulletEnemy({ shell: colors.enemyBullet, core: '#fef3c7' }),
       BULLET_ENEMY_SIZE.w,
       BULLET_ENEMY_SIZE.h,
       options,
     ),
-    rasterizeSvg(
-      bulletEnemySvg({ shell: '#fb923c', core: '#fef9c3' }),
+    rasterizeElement(
+      BulletEnemy({ shell: '#fb923c', core: '#fef9c3' }),
       BULLET_ENEMY_SIZE.w,
       BULLET_ENEMY_SIZE.h,
       options,
     ),
-    rasterizeSvg(
-      bulletEnemySvg({ shell: '#60a5fa', core: '#e0f2fe' }),
+    rasterizeElement(
+      BulletEnemy({ shell: '#60a5fa', core: '#e0f2fe' }),
       BULLET_ENEMY_SIZE.w,
       BULLET_ENEMY_SIZE.h,
       options,
     ),
-    rasterizeSvg(powerUpSpeedSvg(), POWERUP_SVG_SIZE.w, POWERUP_SVG_SIZE.h, options),
-    rasterizeSvg(powerUpMultishotSvg(), POWERUP_SVG_SIZE.w, POWERUP_SVG_SIZE.h, options),
+    rasterizeElement(PowerUpSpeed(), POWERUP_SVG_SIZE.w, POWERUP_SVG_SIZE.h, options),
+    rasterizeElement(PowerUpMultishot(), POWERUP_SVG_SIZE.w, POWERUP_SVG_SIZE.h, options),
   ])
 
   return {

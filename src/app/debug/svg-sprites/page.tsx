@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SVG_SPRITE_CATALOG, type SvgCatalogEntry } from '@/core/svgSprites'
-import { rasterizeSvg } from '@/core/svgRasterizer'
+import { rasterizeElement } from '@/core/svgRasterizer'
 
 const PREVIEW_SCALES = [1, 2, 4] as const
 
@@ -14,8 +14,9 @@ export default function SvgSpritesDebugPage() {
       <header style={headerStyle}>
         <h1 style={h1Style}>SVG Sprite Debug</h1>
         <p style={subStyle}>
-          Each sprite is rasterized at 1×, 2× and 4× via <code>rasterizeSvg()</code>. The 4× preview
-          is the resolution the game uses for drawImage.
+          Each row shows the React-rendered SVG (DOM, vector) on the left, and{' '}
+          <code>rasterizeElement()</code> output at 1×, 2×, 4× on the right (canvas, what the game
+          uses).
         </p>
       </header>
       {groups.map(([group, items]) => (
@@ -38,9 +39,8 @@ function SpriteCell({ entry }: { entry: SvgCatalogEntry }) {
 
   useEffect(() => {
     let cancelled = false
-    const svg = entry.render()
     Promise.all(
-      PREVIEW_SCALES.map((scale) => rasterizeSvg(svg, entry.w, entry.h, { scale })),
+      PREVIEW_SCALES.map((scale) => rasterizeElement(entry.element, entry.w, entry.h, { scale })),
     )
       .then((canvases) => {
         if (cancelled) return
@@ -71,22 +71,31 @@ function SpriteCell({ entry }: { entry: SvgCatalogEntry }) {
           {entry.w}×{entry.h}
         </span>
       </div>
-      {error ? (
-        <div style={errorStyle}>{error}</div>
-      ) : (
-        <div style={previewRowStyle}>
-          {PREVIEW_SCALES.map((scale, i) => (
+      <div style={previewRowStyle}>
+        <div style={previewItemStyle}>
+          <div
+            style={{ width: entry.w * 2, height: entry.h * 2 }}
+            aria-label={`${entry.label} (DOM 2×)`}
+          >
+            {entry.element}
+          </div>
+          <span style={scaleLabelStyle}>DOM 2×</span>
+        </div>
+        {error ? (
+          <div style={errorStyle}>{error}</div>
+        ) : (
+          PREVIEW_SCALES.map((scale, i) => (
             <div key={scale} style={previewItemStyle}>
               <canvas
                 ref={(el) => {
                   canvasRefs.current[i] = el
                 }}
               />
-              <span style={scaleLabelStyle}>{scale}×</span>
+              <span style={scaleLabelStyle}>raster {scale}×</span>
             </div>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
     </div>
   )
 }
@@ -110,7 +119,7 @@ const pageStyle: React.CSSProperties = {
 }
 
 const headerStyle: React.CSSProperties = {
-  maxWidth: 1100,
+  maxWidth: 1200,
   margin: '0 auto 24px',
 }
 
@@ -128,7 +137,7 @@ const subStyle: React.CSSProperties = {
 }
 
 const sectionStyle: React.CSSProperties = {
-  maxWidth: 1100,
+  maxWidth: 1200,
   margin: '0 auto 28px',
 }
 
@@ -143,7 +152,7 @@ const h2Style: React.CSSProperties = {
 
 const gridStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
   gap: 12,
 }
 
@@ -174,9 +183,10 @@ const previewRowStyle: React.CSSProperties = {
   alignItems: 'flex-end',
   gap: 16,
   padding: '10px 4px',
-  minHeight: 88,
+  minHeight: 96,
   background: '#060912',
   borderRadius: 8,
+  flexWrap: 'wrap',
 }
 
 const previewItemStyle: React.CSSProperties = {
