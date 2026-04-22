@@ -9,131 +9,148 @@ import type { ShipKey } from './ships'
 // --- Pixel patterns (1 = filled, 0 = empty) ---
 // Player ship patterns live in ./ships (shared with the home-page selector).
 
-// Enemy — frame A (legs down) (11 x 8)
+// Invader (static grid enemy) — 13 x 9, crab silhouette, 2-frame animation.
+
 const ENEMY_PATTERN_A = [
-  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
-  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-  [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-  [0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1],
-  [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1],
-  [0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0],
+  [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1],
+  [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+  [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0],
+  [0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
 ]
 
-// Enemy — frame B (legs up) (11 x 8)
 const ENEMY_PATTERN_B = [
-  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
-  [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
-  [1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1],
-  [1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
-  [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+  [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+  [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+  [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+  [0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+  [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],
+  [0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0],
+  [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
 ]
 
-// Patrol enemy — frame A (wings spread) (13 x 8)
+// Patrol enemy — 13 x 9, wedge-shaped, 2-frame animation.
+
 const PATROL_PATTERN_A = [
   [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-  [0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [0, 0, 0, 0, 1, 1, 2, 1, 1, 0, 0, 0, 0],
+  [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+  [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+  [1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1],
   [1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1],
-  [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0],
+  [0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 ]
 
-// Patrol enemy — frame B (wings tucked) (13 x 8)
 const PATROL_PATTERN_B = [
   [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0],
-  [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+  [0, 0, 0, 1, 1, 1, 2, 1, 1, 1, 0, 0, 0],
   [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0],
-  [0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+  [0, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 0],
+  [0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0],
+  [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 ]
 
-// Player bullet — rail-bolt shell (5 x 11), pointed tip + flared shoulders
-const BULLET_SHELL_PATTERN = [
-  [0, 0, 1, 0, 0],
-  [0, 1, 1, 1, 0],
-  [0, 1, 1, 1, 0],
-  [1, 1, 1, 1, 1],
-  [0, 1, 1, 1, 0],
-  [0, 1, 1, 1, 0],
-  [0, 1, 1, 1, 0],
-  [0, 1, 1, 1, 0],
-  [0, 1, 1, 1, 0],
+// Player bullet — 5 x 11 rail-bolt shell. 1=shell, 2=tip, 3=core.
+
+const PLAYER_BULLET = [
+  [0, 0, 2, 0, 0],
+  [0, 2, 3, 2, 0],
+  [0, 1, 3, 1, 0],
+  [1, 1, 3, 1, 1],
+  [0, 1, 3, 1, 0],
+  [0, 1, 3, 1, 0],
+  [0, 1, 3, 1, 0],
+  [0, 1, 3, 1, 0],
+  [0, 1, 3, 1, 0],
   [0, 1, 1, 1, 0],
   [0, 0, 1, 0, 0],
 ]
 
-// Player bullet — hot white core (5 x 11)
-const BULLET_CORE_PATTERN = [
-  [0, 0, 0, 0, 0],
-  [0, 0, 1, 0, 0],
-  [0, 0, 1, 0, 0],
-  [0, 1, 1, 1, 0],
-  [0, 0, 1, 0, 0],
-  [0, 0, 1, 0, 0],
-  [0, 0, 1, 0, 0],
-  [0, 0, 1, 0, 0],
-  [0, 0, 1, 0, 0],
-  [0, 0, 1, 0, 0],
-  [0, 0, 0, 0, 0],
-]
+// Enemy normal — 3 x 7 plasma blob. 1=shell, 2=core.
 
-// Enemy bullet — plasma shell (3 x 7)
-const ENEMY_BULLET_SHELL_PATTERN = [
+const ENEMY_BULLET_NORMAL = [
   [0, 1, 0],
-  [1, 1, 1],
-  [1, 1, 1],
-  [1, 1, 1],
-  [1, 1, 1],
-  [1, 1, 1],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 2, 1],
   [0, 1, 0],
 ]
 
-// Enemy bullet — molten core (3 x 7)
-const ENEMY_BULLET_CORE_PATTERN = [
+// Enemy aimed — 3 x 9 finned missile. 1=shell, 2=core.
+
+const ENEMY_BULLET_AIMED_GRID = [
+  [0, 1, 0],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 1, 1],
+  [0, 1, 0],
+]
+
+// Enemy comet — 3 x 11, leading sphere + baked-in trail. 1=shell, 2=core.
+
+const ENEMY_BULLET_COMET_GRID = [
+  [0, 1, 0],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 2, 1],
+  [1, 2, 1],
+  [0, 1, 0],
+  [0, 1, 0],
+  [0, 1, 0],
   [0, 0, 0],
   [0, 1, 0],
-  [0, 1, 0],
-  [0, 1, 0],
-  [0, 1, 0],
-  [0, 1, 0],
   [0, 0, 0],
 ]
 
-// Power-up: speed — lightning bolt shape (7 x 9)
+// Power-ups — 9 x 9 capsule-style badges.
+
 const POWERUP_SPEED_PATTERN = [
-  [0, 0, 0, 1, 1, 0, 0],
-  [0, 0, 1, 1, 0, 0, 0],
-  [0, 1, 1, 0, 0, 0, 0],
-  [1, 1, 1, 1, 1, 1, 0],
-  [0, 0, 0, 0, 1, 1, 0],
-  [0, 0, 0, 1, 1, 0, 0],
-  [0, 0, 1, 1, 0, 0, 0],
-  [0, 1, 1, 0, 0, 0, 0],
-  [1, 1, 0, 0, 0, 0, 0],
-]
-
-// Power-up: multishot — triple arrow shape (9 x 7)
-const POWERUP_MULTISHOT_PATTERN = [
-  [0, 1, 0, 0, 1, 0, 0, 1, 0],
-  [1, 1, 1, 0, 1, 0, 1, 1, 1],
-  [0, 1, 0, 1, 1, 1, 0, 1, 0],
-  [0, 1, 0, 0, 1, 0, 0, 1, 0],
-  [0, 1, 0, 0, 1, 0, 0, 1, 0],
-  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 1, 1, 0, 0, 0],
+  [0, 0, 0, 1, 1, 0, 0, 0, 0],
+  [0, 0, 1, 1, 0, 0, 0, 0, 0],
+  [0, 1, 1, 1, 1, 1, 1, 0, 0],
+  [0, 0, 0, 0, 1, 1, 0, 0, 0],
+  [0, 0, 0, 1, 1, 0, 0, 0, 0],
+  [0, 0, 1, 1, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0, 0],
 ]
 
+const POWERUP_MULTISHOT_PATTERN = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [0, 1, 0, 0, 1, 0, 0, 1, 0],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [0, 1, 1, 1, 1, 1, 1, 1, 0],
+  [0, 0, 1, 1, 1, 1, 1, 0, 0],
+]
+
 // --- Sprite generation ---
+
+/** Extract a 0/1 layer from a multi-tint grid for a single tint index. */
+function extractTint(grid: number[][], tintIdx: number): number[][] {
+  return grid.map((row) => row.map((v) => (v === tintIdx ? 1 : 0)))
+}
 
 /**
  * Create a single-color sprite from a pixel pattern.
@@ -182,6 +199,31 @@ export function createLayeredSprite(
     }
   }
 
+  return canvas
+}
+
+/** Render a multi-tint grid with a per-index color resolver. */
+function createTintedSprite(
+  grid: number[][],
+  resolve: (tintIdx: number) => string | null,
+): HTMLCanvasElement {
+  const h = grid.length
+  const w = grid[0].length
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const v = grid[y][x]
+      if (!v) continue
+      const c = resolve(v)
+      if (!c) continue
+      ctx.fillStyle = c
+      ctx.fillRect(x, y, 1, 1)
+    }
+  }
   return canvas
 }
 
@@ -280,6 +322,14 @@ export type SpriteColors = {
   enemyBullet: string
 }
 
+// Enemy accent (tint index 2) for the 13×9 grids — a slightly brighter shade of the hull.
+// Neon palette: patrol hull = #c455ff, accent = #eaa5ff. Invader accent not used (grid has no 2s).
+const PATROL_ACCENT = '#eaa5ff'
+
+// Player bullet tint colors (neon palette: yellow shell, white core, cream tip).
+const PLAYER_BULLET_TIP = '#fff7c2'
+const PLAYER_BULLET_CORE = '#ffffff'
+
 /**
  * Generate all game sprites with given colors.
  * Call once at startup, then use with drawImage.
@@ -291,30 +341,38 @@ export function createSpriteSheet(colors: SpriteColors, shipKey?: ShipKey): Spri
       ship.layers.map((l) => ({ pattern: l.pattern, color: resolveTint(l.tint, hullColor) })),
     )
 
+  const buildPatrol = (grid: number[][]): HTMLCanvasElement =>
+    createTintedSprite(grid, (idx) => {
+      if (idx === 1) return colors.enemyPatrol
+      if (idx === 2) return PATROL_ACCENT
+      return null
+    })
+
+  const buildPlayerBullet = (shell: string): HTMLCanvasElement =>
+    createLayeredSprite([
+      { pattern: extractTint(PLAYER_BULLET, 1), color: shell },
+      { pattern: extractTint(PLAYER_BULLET, 2), color: PLAYER_BULLET_TIP },
+      { pattern: extractTint(PLAYER_BULLET, 3), color: PLAYER_BULLET_CORE },
+    ])
+
+  const buildEnemyBullet = (grid: number[][], shell: string, core: string): HTMLCanvasElement =>
+    createLayeredSprite([
+      { pattern: extractTint(grid, 1), color: shell },
+      { pattern: extractTint(grid, 2), color: core },
+    ])
+
   return {
     player1: buildPlayer(colors.player1),
     player2: buildPlayer(colors.player2),
     playerDead: buildPlayer(colors.playerDead),
     staticA: createSprite(ENEMY_PATTERN_A, colors.enemyStatic),
     staticB: createSprite(ENEMY_PATTERN_B, colors.enemyStatic),
-    patrolA: createSprite(PATROL_PATTERN_A, colors.enemyPatrol),
-    patrolB: createSprite(PATROL_PATTERN_B, colors.enemyPatrol),
-    bullet: createLayeredSprite([
-      { pattern: BULLET_SHELL_PATTERN, color: colors.bullet },
-      { pattern: BULLET_CORE_PATTERN, color: '#ffffff' },
-    ]),
-    enemyBullet: createLayeredSprite([
-      { pattern: ENEMY_BULLET_SHELL_PATTERN, color: colors.enemyBullet },
-      { pattern: ENEMY_BULLET_CORE_PATTERN, color: '#fff1d6' },
-    ]),
-    enemyBulletAimed: createLayeredSprite([
-      { pattern: ENEMY_BULLET_SHELL_PATTERN, color: '#ff9a1f' },
-      { pattern: ENEMY_BULLET_CORE_PATTERN, color: '#ffe8a8' },
-    ]),
-    enemyBulletComet: createLayeredSprite([
-      { pattern: ENEMY_BULLET_SHELL_PATTERN, color: '#6fa8ff' },
-      { pattern: ENEMY_BULLET_CORE_PATTERN, color: '#e8f4ff' },
-    ]),
+    patrolA: buildPatrol(PATROL_PATTERN_A),
+    patrolB: buildPatrol(PATROL_PATTERN_B),
+    bullet: buildPlayerBullet(colors.bullet),
+    enemyBullet: buildEnemyBullet(ENEMY_BULLET_NORMAL, colors.enemyBullet, '#ffe1b0'),
+    enemyBulletAimed: buildEnemyBullet(ENEMY_BULLET_AIMED_GRID, '#ff9a1f', '#ffe8a8'),
+    enemyBulletComet: buildEnemyBullet(ENEMY_BULLET_COMET_GRID, '#6fa8ff', '#e8f4ff'),
     powerUpSpeed: createSprite(POWERUP_SPEED_PATTERN, '#ffdd00'),
     powerUpMultishot: createSprite(POWERUP_MULTISHOT_PATTERN, '#00ddff'),
   }

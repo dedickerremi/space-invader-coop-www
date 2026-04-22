@@ -31,19 +31,20 @@ export type RendererConfig = {
   shipKey?: ShipKey
 }
 
+// Neon palette — design tokens locked with Claude Design handoff.
 const DEFAULT_COLORS: RendererColors = {
   player1: '#00ff88',
   player2: '#00aaff',
   playerDead: '#333',
-  bullet: '#ffff00',
-  enemy: '#ff4444',
-  enemyGlow: 'rgba(255, 68, 68, 0.6)',
-  background: '#050508',
+  bullet: '#ffe24d',
+  enemy: '#ff4d7d',
+  enemyGlow: 'rgba(255, 77, 125, 0.6)',
+  background: '#05060d',
 }
 
 // Additional colors not in RendererColors (internal)
-const PATROL_COLOR = '#ff44ff'
-const PATROL_GLOW = 'rgba(255, 68, 255, 0.6)'
+const PATROL_COLOR = '#c455ff'
+const PATROL_GLOW = 'rgba(196, 85, 255, 0.6)'
 const ENEMY_BULLET_COLOR = '#ff6644'
 const ENEMY_BULLET_GLOW = 'rgba(255, 102, 68, 0.5)'
 
