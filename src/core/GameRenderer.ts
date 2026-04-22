@@ -9,6 +9,7 @@ import { createSpriteSheet, generateStars, generateNebula } from './Sprites'
 import type { SpriteSheet, Star } from './Sprites'
 import { SHIPS } from './ships'
 import type { ShipKey } from './ships'
+import { ENEMY_VISUAL_SIZE, BULLET_VISUAL_SIZE, POWERUP_VISUAL_SIZE } from './svgSprites'
 
 // --- Configuration ---
 
@@ -83,9 +84,25 @@ export class GameRenderer {
 
   // Sprites
   private sprites: SpriteSheet
+  /** True when an externally-built (SVG) sheet is in use — turns on the
+   *  decoupled visual sizes for enemies/bullets/power-ups and the
+   *  sprite-driven power-up render path. */
+  private useSvgSprites: boolean
   /** Visual draw size for player ship — may exceed hitbox to preserve aspect. */
   private playerVisualWidth: number
   private playerVisualHeight: number
+  /** Visual draw size for enemies (decoupled from hitbox in SVG mode). */
+  private enemyGruntVisW: number
+  private enemyGruntVisH: number
+  private enemyPatrolVisW: number
+  private enemyPatrolVisH: number
+  /** Visual draw size for bullets (decoupled from hitbox in SVG mode). */
+  private bulletVisW: number
+  private bulletVisH: number
+  private enemyBulletVisW: number
+  private enemyBulletVisH: number
+  /** Visual draw size for power-ups (decoupled from hitbox in SVG mode). */
+  private powerUpVisSize: number
   private stars: Star[]
   private nebula: HTMLCanvasElement
   private meteors: Meteor[] = []
@@ -134,9 +151,19 @@ export class GameRenderer {
     // build one from the pixel-art generator.
     if (config?.spriteSheet) {
       this.sprites = config.spriteSheet
+      this.useSvgSprites = true
       const ship = SHIPS[config.shipKey ?? 'fighter']
       this.playerVisualWidth = ship.visualWidth
       this.playerVisualHeight = ship.visualHeight
+      this.enemyGruntVisW = ENEMY_VISUAL_SIZE.grunt.w
+      this.enemyGruntVisH = ENEMY_VISUAL_SIZE.grunt.h
+      this.enemyPatrolVisW = ENEMY_VISUAL_SIZE.patrol.w
+      this.enemyPatrolVisH = ENEMY_VISUAL_SIZE.patrol.h
+      this.bulletVisW = BULLET_VISUAL_SIZE.player.w
+      this.bulletVisH = BULLET_VISUAL_SIZE.player.h
+      this.enemyBulletVisW = BULLET_VISUAL_SIZE.enemy.w
+      this.enemyBulletVisH = BULLET_VISUAL_SIZE.enemy.h
+      this.powerUpVisSize = POWERUP_VISUAL_SIZE
     } else {
       this.sprites = createSpriteSheet(
         {
@@ -150,8 +177,19 @@ export class GameRenderer {
         },
         config?.shipKey,
       )
+      this.useSvgSprites = false
       this.playerVisualWidth = meta.playerWidth
       this.playerVisualHeight = meta.playerHeight
+      // Pixel-art mode: visual size matches hitbox (preserves prior behavior).
+      this.enemyGruntVisW = meta.enemySize
+      this.enemyGruntVisH = meta.enemySize
+      this.enemyPatrolVisW = meta.patrolSize
+      this.enemyPatrolVisH = meta.patrolSize
+      this.bulletVisW = meta.bulletWidth
+      this.bulletVisH = meta.bulletHeight
+      this.enemyBulletVisW = meta.enemyBulletWidth
+      this.enemyBulletVisH = meta.enemyBulletHeight
+      this.powerUpVisSize = meta.powerUpSize
     }
 
     // Generate background stars + pre-rendered nebula texture
@@ -593,35 +631,26 @@ export class GameRenderer {
 
   private renderBullets(state: GameState): void {
     const ctx = this.ctx
-    const m = getGameMeta()
     if (state.bullets.length === 0) return
 
-    // Disable smoothing for crisp pixel art
-    ctx.imageSmoothingEnabled = false
+    const w = this.bulletVisW
+    const h = this.bulletVisH
+
+    // Crisp pixel art needs no smoothing; SVG-rasterized sprites render
+    // best with smoothing on (the canvas was rasterized at 4× DPR).
+    ctx.imageSmoothingEnabled = this.useSvgSprites
 
     // Glow pass (blurred)
     ctx.shadowColor = this.colors.bullet
     ctx.shadowBlur = 12
     for (const bullet of state.bullets) {
-      ctx.drawImage(
-        this.sprites.bullet,
-        bullet.x - m.bulletWidth / 2,
-        bullet.y - m.bulletHeight / 2,
-        m.bulletWidth,
-        m.bulletHeight,
-      )
+      ctx.drawImage(this.sprites.bullet, bullet.x - w / 2, bullet.y - h / 2, w, h)
     }
 
     // Sharp pass (no blur, on top — makes the core pop)
     ctx.shadowBlur = 0
     for (const bullet of state.bullets) {
-      ctx.drawImage(
-        this.sprites.bullet,
-        bullet.x - m.bulletWidth / 2,
-        bullet.y - m.bulletHeight / 2,
-        m.bulletWidth,
-        m.bulletHeight,
-      )
+      ctx.drawImage(this.sprites.bullet, bullet.x - w / 2, bullet.y - h / 2, w, h)
     }
 
     ctx.imageSmoothingEnabled = true
@@ -629,20 +658,20 @@ export class GameRenderer {
 
   private renderEnemies(state: GameState): void {
     const ctx = this.ctx
-    const m = getGameMeta()
     const enemies = state.enemies ?? []
 
     // Pick animation frame based on time
     const elapsed = performance.now() - this.startTime
     const frame = Math.floor(elapsed / ENEMY_ANIM_INTERVAL) % 2
 
-    // Disable smoothing for crisp pixel art
-    ctx.imageSmoothingEnabled = false
+    ctx.imageSmoothingEnabled = this.useSvgSprites
 
     for (const e of enemies) {
       const isPatrol = e.type === 'patrol'
-      const size = isPatrol ? m.patrolSize : m.enemySize
-      const half = size / 2
+      const visW = isPatrol ? this.enemyPatrolVisW : this.enemyGruntVisW
+      const visH = isPatrol ? this.enemyPatrolVisH : this.enemyGruntVisH
+      const dx = e.x - visW / 2
+      const dy = e.y - visH / 2
       const glowColor = isPatrol ? PATROL_GLOW : this.colors.enemyGlow
 
       // Pick sprite based on type + frame
@@ -656,11 +685,11 @@ export class GameRenderer {
       // Glow
       ctx.shadowColor = glowColor
       ctx.shadowBlur = 14
-      ctx.drawImage(sprite, e.x - half, e.y - half, size, size)
+      ctx.drawImage(sprite, dx, dy, visW, visH)
       ctx.shadowBlur = 0
 
       // Draw on top (sharper)
-      ctx.drawImage(sprite, e.x - half, e.y - half, size, size)
+      ctx.drawImage(sprite, dx, dy, visW, visH)
     }
 
     ctx.imageSmoothingEnabled = true
@@ -668,14 +697,13 @@ export class GameRenderer {
 
   private renderEnemyBullets(state: GameState): void {
     const ctx = this.ctx
-    const m = getGameMeta()
     const bullets = state.enemyBullets ?? []
     if (bullets.length === 0) return
 
-    const w = m.enemyBulletWidth
-    const h = m.enemyBulletHeight
+    const w = this.enemyBulletVisW
+    const h = this.enemyBulletVisH
 
-    ctx.imageSmoothingEnabled = false
+    ctx.imageSmoothingEnabled = this.useSvgSprites
 
     for (const b of bullets) {
       let sprite: HTMLCanvasElement
@@ -734,10 +762,40 @@ export class GameRenderer {
       points_bonus:  { color: '#ffcc00', glyph: '$' },
     }
 
+    // SVG sprites the handoff delivered (only 2 of 5 kinds).
+    const svgKindToSprite: Partial<Record<string, HTMLCanvasElement>> = this.useSvgSprites
+      ? {
+          speed_boost: this.sprites.powerUpSpeed,
+          double_shot: this.sprites.powerUpMultishot,
+        }
+      : {}
+
+    const visSize = this.powerUpVisSize
+    const visHalf = visSize / 2
+
     for (const pu of powerUps) {
       const style = STYLE[pu.kind] ?? { color: '#ffffff', glyph: '?' }
       const cx = pu.x
       const cy = pu.y + bob
+
+      const sprite = svgKindToSprite[pu.kind]
+      if (sprite) {
+        // SVG path — soft halo + sprite, skips the ad-hoc disc/glyph.
+        ctx.save()
+        ctx.shadowColor = style.color
+        ctx.shadowBlur = 14
+        ctx.fillStyle = style.color
+        ctx.globalAlpha = 0.22
+        ctx.beginPath()
+        ctx.arc(cx, cy, visHalf + 1, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 1
+        ctx.shadowBlur = 0
+        ctx.imageSmoothingEnabled = true
+        ctx.drawImage(sprite, cx - visHalf, cy - visHalf, visSize, visSize)
+        ctx.restore()
+        continue
+      }
 
       // Glow halo
       ctx.shadowColor = style.color

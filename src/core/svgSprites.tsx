@@ -293,6 +293,14 @@ export const ENEMY_SVG_SIZE = {
   patrolB: ENEMY_PATROL_SIZE,
 } as const
 
+// Visual draw sizes used by the renderer in SVG mode. Hitbox dims live in
+// gameMeta and stay unchanged — these only control how big the sprite is
+// drawn so it preserves its natural aspect ratio (Option C).
+export const ENEMY_VISUAL_SIZE = {
+  grunt:  { w: 38, h: 28 },   // SVG natural 44×32, hitbox 28×28
+  patrol: { w: 42, h: 26 },   // SVG natural 52×32, hitbox 32×32
+} as const
+
 function EnemyGruntBase({
   body,
   shade,
@@ -489,6 +497,12 @@ export type BulletColors = { shell: string; core: string }
 export const BULLET_PLAYER_SIZE = { w: 16, h: 32 }
 export const BULLET_ENEMY_SIZE = { w: 12, h: 24 }
 
+// Visual draw sizes for bullets in SVG mode (decoupled from hitbox).
+export const BULLET_VISUAL_SIZE = {
+  player: { w: 10, h: 20 },  // SVG 16×32, hitbox 6×14
+  enemy:  { w: 8,  h: 16 },  // SVG 12×24, hitbox 6×10
+} as const
+
 export function BulletPlayer({
   shell = '#fde047',
   core = '#ffffff',
@@ -549,6 +563,9 @@ export function BulletEnemyComet(): ReactElement {
 // --- Power-ups ---------------------------------------------
 
 export const POWERUP_SVG_SIZE = { w: 32, h: 32 }
+
+// Visual draw size for power-ups in SVG mode (decoupled from hitbox 20).
+export const POWERUP_VISUAL_SIZE = 26
 
 export function PowerUpSpeed(): ReactElement {
   const bg = '#facc15'
