@@ -7,6 +7,7 @@ import type { Boss, GameState } from './types'
 import { getGameMeta } from './gameMeta'
 import { createSpriteSheet, generateStars, generateNebula } from './Sprites'
 import type { SpriteSheet, Star } from './Sprites'
+import { SHIPS } from './ships'
 import type { ShipKey } from './ships'
 
 // --- Configuration ---
@@ -29,9 +30,16 @@ export type RendererConfig = {
   colors?: Partial<RendererColors>
   /** Which player ship sprite to use. Defaults to 'fighter'. */
   shipKey?: ShipKey
+  /**
+   * Optional pre-built sprite sheet (e.g. SVG-rasterized).
+   * When provided, the renderer uses this instead of building one from
+   * the pixel-art generator, and draws ships at the ship's
+   * visualWidth/visualHeight (decoupled from the hitbox).
+   */
+  spriteSheet?: SpriteSheet
 }
 
-const DEFAULT_COLORS: RendererColors = {
+export const DEFAULT_COLORS: RendererColors = {
   player1: '#00ff88',
   player2: '#00aaff',
   playerDead: '#333',
@@ -42,9 +50,9 @@ const DEFAULT_COLORS: RendererColors = {
 }
 
 // Additional colors not in RendererColors (internal)
-const PATROL_COLOR = '#ff44ff'
+export const PATROL_COLOR = '#ff44ff'
 const PATROL_GLOW = 'rgba(255, 68, 255, 0.6)'
-const ENEMY_BULLET_COLOR = '#ff6644'
+export const ENEMY_BULLET_COLOR = '#ff6644'
 const ENEMY_BULLET_GLOW = 'rgba(255, 102, 68, 0.5)'
 
 // Enemy animation: alternate frames every N ms
@@ -75,6 +83,9 @@ export class GameRenderer {
 
   // Sprites
   private sprites: SpriteSheet
+  /** Visual draw size for player ship — may exceed hitbox to preserve aspect. */
+  private playerVisualWidth: number
+  private playerVisualHeight: number
   private stars: Star[]
   private nebula: HTMLCanvasElement
   private meteors: Meteor[] = []
@@ -119,19 +130,29 @@ export class GameRenderer {
     ctx.scale(dpr, dpr)
     this.ctx = ctx
 
-    // Generate sprites
-    this.sprites = createSpriteSheet(
-      {
-        player1: this.colors.player1,
-        player2: this.colors.player2,
-        playerDead: this.colors.playerDead,
-        enemyStatic: this.colors.enemy,
-        enemyPatrol: PATROL_COLOR,
-        bullet: this.colors.bullet,
-        enemyBullet: ENEMY_BULLET_COLOR,
-      },
-      config?.shipKey,
-    )
+    // Generate sprites — accept an externally-built sheet (e.g. SVG) or
+    // build one from the pixel-art generator.
+    if (config?.spriteSheet) {
+      this.sprites = config.spriteSheet
+      const ship = SHIPS[config.shipKey ?? 'fighter']
+      this.playerVisualWidth = ship.visualWidth
+      this.playerVisualHeight = ship.visualHeight
+    } else {
+      this.sprites = createSpriteSheet(
+        {
+          player1: this.colors.player1,
+          player2: this.colors.player2,
+          playerDead: this.colors.playerDead,
+          enemyStatic: this.colors.enemy,
+          enemyPatrol: PATROL_COLOR,
+          bullet: this.colors.bullet,
+          enemyBullet: ENEMY_BULLET_COLOR,
+        },
+        config?.shipKey,
+      )
+      this.playerVisualWidth = meta.playerWidth
+      this.playerVisualHeight = meta.playerHeight
+    }
 
     // Generate background stars + pre-rendered nebula texture
     this.stars = generateStars(this.width, this.height)
@@ -391,11 +412,13 @@ export class GameRenderer {
       //     a non-zero life-count player is always rendered alive with an
       //     invincibility flicker handled below. ---
       if (!player.alive) {
-        const drawX = player.x - m.playerWidth / 2
-        const drawY = playerY - m.playerHeight / 2
+        const visW = this.playerVisualWidth
+        const visH = this.playerVisualHeight
+        const drawX = player.x - visW / 2
+        const drawY = playerY - visH / 2
 
         ctx.globalAlpha = 0.15
-        ctx.drawImage(this.sprites.playerDead, drawX, drawY, m.playerWidth, m.playerHeight)
+        ctx.drawImage(this.sprites.playerDead, drawX, drawY, visW, visH)
         ctx.globalAlpha = 1.0
 
         ctx.fillStyle = '#ff4444'
@@ -440,15 +463,17 @@ export class GameRenderer {
       // Thruster flame (drawn in world space, below ship, before sprite)
       this.renderThruster(player.x, playerY, m.playerHeight, fx.tiltRad, color, now)
 
-      // Draw rotated sprite (glow pass + sharp pass)
+      // Draw rotated sprite at the ship's visual size (decoupled from hitbox).
+      const visW = this.playerVisualWidth
+      const visH = this.playerVisualHeight
       ctx.save()
       ctx.translate(player.x, playerY)
       ctx.rotate(fx.tiltRad)
       ctx.shadowColor = isInvincible ? '#ffffff' : color
       ctx.shadowBlur = isInvincible ? 24 : 18
-      ctx.drawImage(sprite, -m.playerWidth / 2, -m.playerHeight / 2, m.playerWidth, m.playerHeight)
+      ctx.drawImage(sprite, -visW / 2, -visH / 2, visW, visH)
       ctx.shadowBlur = 0
-      ctx.drawImage(sprite, -m.playerWidth / 2, -m.playerHeight / 2, m.playerWidth, m.playerHeight)
+      ctx.drawImage(sprite, -visW / 2, -visH / 2, visW, visH)
       ctx.restore()
 
       // For HUD/overlay math below

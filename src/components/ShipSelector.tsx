@@ -3,15 +3,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { SHIPS, SHIP_ORDER, createLayeredSprite, resolveTint } from '@/core'
 import type { ShipKey } from '@/core'
+import { SHIP_COMPONENTS, SHIP_SVG_SIZE } from '@/core/svgSprites'
+import { isSvgSpritesEnabled } from '@/core/svgSpriteSheet'
 
 const STORAGE_KEY = 'shipKey'
 const PREVIEW_SIZE = 72
 const PREVIEW_HULL = '#00ff88'
+const PREVIEW_ACCENT = '#a8ffd6'
 
 /**
- * Small canvas rendering one ship at fixed size, crisp pixel scaling.
+ * Pixel-art preview — original behavior used when SVG flag is off.
  */
-function ShipPreview({ shipKey, selected }: { shipKey: ShipKey; selected: boolean }) {
+function ShipPreviewPixel({ shipKey, selected }: { shipKey: ShipKey; selected: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -35,13 +38,11 @@ function ShipPreview({ shipKey, selected }: { shipKey: ShipKey; selected: boolea
 
     ctx.clearRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE)
 
-    // Subtle glow while selected.
     if (selected) {
       ctx.shadowColor = PREVIEW_HULL
       ctx.shadowBlur = 16
     }
 
-    // Preserve sprite aspect ratio inside the preview square.
     const sw = sprite.width
     const sh = sprite.height
     const scale = Math.min((PREVIEW_SIZE - 8) / sw, (PREVIEW_SIZE - 8) / sh)
@@ -53,6 +54,37 @@ function ShipPreview({ shipKey, selected }: { shipKey: ShipKey; selected: boolea
   }, [shipKey, selected])
 
   return <canvas ref={canvasRef} style={{ display: 'block' }} />
+}
+
+/**
+ * SVG preview — used when NEXT_PUBLIC_USE_SVG_SPRITES=1.
+ * Renders the React SVG component directly in the DOM, scaled to fit the
+ * preview square while preserving aspect ratio.
+ */
+function ShipPreviewSvg({ shipKey, selected }: { shipKey: ShipKey; selected: boolean }) {
+  const Component = SHIP_COMPONENTS[shipKey]
+  const { w, h } = SHIP_SVG_SIZE[shipKey]
+  const scale = Math.min((PREVIEW_SIZE - 8) / w, (PREVIEW_SIZE - 8) / h)
+  return (
+    <div
+      style={{
+        width: PREVIEW_SIZE,
+        height: PREVIEW_SIZE,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        filter: selected ? `drop-shadow(0 0 8px ${PREVIEW_HULL})` : undefined,
+      }}
+    >
+      <div style={{ width: w * scale, height: h * scale }}>
+        <Component hull={PREVIEW_HULL} accent={PREVIEW_ACCENT} />
+      </div>
+    </div>
+  )
+}
+
+function ShipPreview(props: { shipKey: ShipKey; selected: boolean }) {
+  return isSvgSpritesEnabled() ? <ShipPreviewSvg {...props} /> : <ShipPreviewPixel {...props} />
 }
 
 export function ShipSelector() {
