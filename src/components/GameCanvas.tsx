@@ -19,6 +19,32 @@ import {
 } from '@/core'
 import type { GameState, GameOverSummary, Bullet, GameMode, ShipKey, BossKind } from '@/core'
 import { SignInHint } from '@/components/SignInHint'
+import { createSpriteSheetSvg, isSvgSpritesEnabled } from '@/core/svgSpriteSheet'
+import { DEFAULT_COLORS, PATROL_COLOR, ENEMY_BULLET_COLOR } from '@/core/GameRenderer'
+
+async function initRenderer(
+  canvas: HTMLCanvasElement,
+  width: number,
+  height: number,
+  shipKey: ShipKey | undefined,
+): Promise<GameRenderer> {
+  if (isSvgSpritesEnabled()) {
+    const spriteSheet = await createSpriteSheetSvg(
+      {
+        player1: DEFAULT_COLORS.player1,
+        player2: DEFAULT_COLORS.player2,
+        playerDead: DEFAULT_COLORS.playerDead,
+        enemyStatic: DEFAULT_COLORS.enemy,
+        enemyPatrol: PATROL_COLOR,
+        bullet: DEFAULT_COLORS.bullet,
+        enemyBullet: ENEMY_BULLET_COLOR,
+      },
+      shipKey,
+    )
+    return new GameRenderer(canvas, { width, height, shipKey, spriteSheet })
+  }
+  return new GameRenderer(canvas, { width, height, shipKey })
+}
 
 // --- Types ---
 
@@ -462,12 +488,24 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       if (raw && raw in SHIPS) shipKey = raw as ShipKey
     }
 
-    const renderer = new GameRenderer(canvas, { width: viewportW, height: viewportH, shipKey })
-    rendererRef.current = renderer
-    renderer.start()
+    let cancelled = false
+    let activeRenderer: GameRenderer | null = null
+
+    void initRenderer(canvas, viewportW, viewportH, shipKey).then((r) => {
+      if (cancelled) {
+        r.stop()
+        return
+      }
+      activeRenderer = r
+      rendererRef.current = r
+      r.start()
+    })
 
     return () => {
-      renderer.stop()
+      cancelled = true
+      if (activeRenderer) {
+        activeRenderer.stop()
+      }
       rendererRef.current = null
     }
   }, [viewportW, viewportH])

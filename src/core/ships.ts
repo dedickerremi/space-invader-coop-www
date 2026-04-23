@@ -13,6 +13,14 @@ export type ShipDef = {
   name: string
   description: string
   layers: ShipLayer[]
+  /**
+   * Visual draw size for SVG renderer (decoupled from hitbox).
+   * Hitbox stays at playerWidth × playerHeight from gameMeta;
+   * the SVG sprite is drawn at this size to preserve its aspect ratio.
+   * When SVG sprites are disabled, the renderer falls back to hitbox dims.
+   */
+  visualWidth: number
+  visualHeight: number
 }
 
 // --- Classic cannon (11 x 7, single layer) ---
@@ -191,6 +199,8 @@ export const SHIPS: Record<ShipKey, ShipDef> = {
     name: 'Classic',
     description: 'Arcade cannon',
     layers: [{ pattern: CLASSIC_BODY, tint: 'hull' }],
+    visualWidth: 52,
+    visualHeight: 33,
   },
   fighter: {
     key: 'fighter',
@@ -201,6 +211,8 @@ export const SHIPS: Record<ShipKey, ShipDef> = {
       { pattern: FIGHTER_ENGINE, tint: 'engine' },
       { pattern: FIGHTER_COCKPIT, tint: 'cockpit' },
     ],
+    visualWidth: 52,
+    visualHeight: 36,
   },
   falcon: {
     key: 'falcon',
@@ -212,6 +224,8 @@ export const SHIPS: Record<ShipKey, ShipDef> = {
       { pattern: FALCON_ENGINE, tint: 'engine' },
       { pattern: FALCON_COCKPIT, tint: 'cockpit' },
     ],
+    visualWidth: 52,
+    visualHeight: 38,
   },
   xwing: {
     key: 'xwing',
@@ -223,6 +237,8 @@ export const SHIPS: Record<ShipKey, ShipDef> = {
       { pattern: XWING_ENGINE, tint: 'engine' },
       { pattern: XWING_COCKPIT, tint: 'cockpit' },
     ],
+    visualWidth: 52,
+    visualHeight: 38,
   },
 }
 
