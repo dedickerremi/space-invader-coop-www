@@ -3,18 +3,18 @@
 // Framework-agnostic: pure TypeScript, uses Canvas API only
 // ============================================================
 
-import type { Boss, GameState } from './types'
-import { getGameMeta } from './gameMeta'
-import { createSpriteSheet, generateStars, generateNebula } from './Sprites'
-import type { SpriteSheet, Star } from './Sprites'
-import { SHIPS } from './ships'
-import type { ShipKey } from './ships'
+import type { Boss, GameState } from "./types"
+import { getGameMeta } from "./gameMeta"
+import { createSpriteSheet, generateStars, generateNebula } from "./Sprites"
+import type { SpriteSheet, Star } from "./Sprites"
+import { SHIPS } from "./ships"
+import type { ShipKey } from "./ships"
 import {
   ENEMY_VISUAL_SIZE,
   BULLET_VISUAL_SIZE,
   POWERUP_VISUAL_SIZE,
   BOSS_VISUAL_SIZE,
-} from './svgSprites'
+} from "./svgSprites"
 
 // --- Configuration ---
 
@@ -46,20 +46,20 @@ export type RendererConfig = {
 }
 
 export const DEFAULT_COLORS: RendererColors = {
-  player1: '#00ff88',
-  player2: '#00aaff',
-  playerDead: '#333',
-  bullet: '#ffff00',
-  enemy: '#ff4444',
-  enemyGlow: 'rgba(255, 68, 68, 0.6)',
-  background: '#050508',
+  player1: "#00ff88",
+  player2: "#00aaff",
+  playerDead: "#333",
+  bullet: "#ffff00",
+  enemy: "#ff4444",
+  enemyGlow: "rgba(255, 68, 68, 0.6)",
+  background: "#050508",
 }
 
 // Additional colors not in RendererColors (internal)
-export const PATROL_COLOR = '#ff44ff'
-const PATROL_GLOW = 'rgba(255, 68, 255, 0.6)'
-export const ENEMY_BULLET_COLOR = '#ff6644'
-const ENEMY_BULLET_GLOW = 'rgba(255, 102, 68, 0.5)'
+export const PATROL_COLOR = "#ff44ff"
+const PATROL_GLOW = "rgba(255, 68, 255, 0.6)"
+export const ENEMY_BULLET_COLOR = "#ff6644"
+const ENEMY_BULLET_GLOW = "rgba(255, 102, 68, 0.5)"
 
 // Enemy animation: alternate frames every N ms
 const ENEMY_ANIM_INTERVAL = 600
@@ -140,15 +140,17 @@ export class GameRenderer {
     this.width = config?.width ?? meta.gameWidth
     this.height = config?.height ?? meta.gameHeight
     this.colors = { ...DEFAULT_COLORS, ...config?.colors }
-    const dpr = config?.devicePixelRatio ?? (typeof window !== 'undefined' ? window.devicePixelRatio : 1)
+    const dpr =
+      config?.devicePixelRatio ??
+      (typeof window !== "undefined" ? window.devicePixelRatio : 1)
 
     canvas.width = this.width * dpr
     canvas.height = this.height * dpr
     canvas.style.width = `${this.width}px`
     canvas.style.height = `${this.height}px`
 
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('Canvas 2D context not available')
+    const ctx = canvas.getContext("2d")
+    if (!ctx) throw new Error("Canvas 2D context not available")
     ctx.scale(dpr, dpr)
     this.ctx = ctx
 
@@ -157,7 +159,7 @@ export class GameRenderer {
     if (config?.spriteSheet) {
       this.sprites = config.spriteSheet
       this.useSvgSprites = true
-      const ship = SHIPS[config.shipKey ?? 'fighter']
+      const ship = SHIPS[config.shipKey ?? "fighter"]
       this.playerVisualWidth = ship.visualWidth
       this.playerVisualHeight = ship.visualHeight
       this.enemyGruntVisW = ENEMY_VISUAL_SIZE.grunt.w
@@ -317,7 +319,12 @@ export class GameRenderer {
       // Twinkle: oscillate brightness over time
       const twinkle = 0.5 + 0.5 * Math.sin(elapsed * star.twinkleSpeed + star.x)
       const alpha = star.brightness * twinkle
-      const rgb = star.tint === 1 ? '180, 210, 255' : star.tint === 2 ? '255, 220, 170' : '255, 255, 255'
+      const rgb =
+        star.tint === 1
+          ? "180, 210, 255"
+          : star.tint === 2
+            ? "255, 220, 170"
+            : "255, 255, 255"
       ctx.fillStyle = `rgba(${rgb}, ${alpha})`
       ctx.fillRect(star.x, star.y, star.size, star.size)
 
@@ -365,7 +372,12 @@ export class GameRenderer {
       m.x += m.vx
       m.y += m.vy
 
-      if (m.age >= m.ttl || m.x < -120 || m.x > this.width + 120 || m.y > this.height + 120) {
+      if (
+        m.age >= m.ttl ||
+        m.x < -120 ||
+        m.x > this.width + 120 ||
+        m.y > this.height + 120
+      ) {
         continue
       }
       survivors.push(m)
@@ -384,12 +396,12 @@ export class GameRenderer {
       const grad = ctx.createLinearGradient(m.x, m.y, tx, ty)
       grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`)
       grad.addColorStop(0.4, `rgba(180, 210, 255, ${alpha * 0.6})`)
-      grad.addColorStop(1, 'rgba(120, 160, 220, 0)')
+      grad.addColorStop(1, "rgba(120, 160, 220, 0)")
 
       ctx.save()
       ctx.strokeStyle = grad
       ctx.lineWidth = 1.5
-      ctx.shadowColor = 'rgba(200, 220, 255, 0.8)'
+      ctx.shadowColor = "rgba(200, 220, 255, 0.8)"
       ctx.shadowBlur = 6
       ctx.beginPath()
       ctx.moveTo(m.x, m.y)
@@ -412,7 +424,9 @@ export class GameRenderer {
     const startX = fromLeft ? -60 : this.width + 60
     const startY = Math.random() * this.height * 0.5
     const speed = 6 + Math.random() * 4
-    const angle = (Math.PI / 180) * (fromLeft ? 20 + Math.random() * 25 : 155 + Math.random() * 25)
+    const angle =
+      (Math.PI / 180) *
+      (fromLeft ? 20 + Math.random() * 25 : 155 + Math.random() * 25)
     this.meteors.push({
       x: startX,
       y: startY,
@@ -425,11 +439,11 @@ export class GameRenderer {
 
   private renderWaiting(state: GameState): void {
     const ctx = this.ctx
-    ctx.fillStyle = '#666'
-    ctx.font = '24px JetBrains Mono, monospace'
-    ctx.textAlign = 'center'
-    ctx.fillText('Waiting for opponent...', this.width / 2, this.height / 2)
-    ctx.font = '14px JetBrains Mono, monospace'
+    ctx.fillStyle = "#666"
+    ctx.font = "24px JetBrains Mono, monospace"
+    ctx.textAlign = "center"
+    ctx.fillText("Waiting for opponent...", this.width / 2, this.height / 2)
+    ctx.font = "14px JetBrains Mono, monospace"
     ctx.fillText(
       `${state.players.length}/2 connected`,
       this.width / 2,
@@ -464,16 +478,20 @@ export class GameRenderer {
         ctx.drawImage(this.sprites.playerDead, drawX, drawY, visW, visH)
         ctx.globalAlpha = 1.0
 
-        ctx.fillStyle = '#ff4444'
-        ctx.font = '16px JetBrains Mono, monospace'
-        ctx.textAlign = 'center'
-        ctx.fillText('DEAD', player.x, playerY - m.playerHeight / 2 - 8)
+        ctx.fillStyle = "#ff4444"
+        ctx.font = "16px JetBrains Mono, monospace"
+        ctx.textAlign = "center"
+        ctx.fillText("DEAD", player.x, playerY - m.playerHeight / 2 - 8)
 
-        ctx.fillStyle = '#666'
-        ctx.font = '10px JetBrains Mono, monospace'
-        ctx.textAlign = 'center'
-        const label = player.displayName ?? (isMe ? 'YOU' : `P${index + 1}`)
-        ctx.fillText(`${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`, player.x, playerY + m.playerHeight / 2 + 14)
+        ctx.fillStyle = "#666"
+        ctx.font = "10px JetBrains Mono, monospace"
+        ctx.textAlign = "center"
+        const label = player.displayName ?? (isMe ? "YOU" : `P${index + 1}`)
+        ctx.fillText(
+          `${label}  ${"♥".repeat(player.lives)}${"♡".repeat(Math.max(0, 3 - player.lives))}`,
+          player.x,
+          playerY + m.playerHeight / 2 + 14,
+        )
         return
       }
 
@@ -504,7 +522,14 @@ export class GameRenderer {
       const color = isMe ? this.colors.player1 : this.colors.player2
 
       // Thruster flame (drawn in world space, below ship, before sprite)
-      this.renderThruster(player.x, playerY, m.playerHeight, fx.tiltRad, color, now)
+      this.renderThruster(
+        player.x,
+        playerY,
+        m.playerHeight,
+        fx.tiltRad,
+        color,
+        now,
+      )
 
       // Draw rotated sprite at the ship's visual size (decoupled from hitbox).
       const visW = this.playerVisualWidth
@@ -512,7 +537,7 @@ export class GameRenderer {
       ctx.save()
       ctx.translate(player.x, playerY)
       ctx.rotate(fx.tiltRad)
-      ctx.shadowColor = isInvincible ? '#ffffff' : color
+      ctx.shadowColor = isInvincible ? "#ffffff" : color
       ctx.shadowBlur = isInvincible ? 24 : 18
       ctx.drawImage(sprite, -visW / 2, -visH / 2, visW, visH)
       ctx.shadowBlur = 0
@@ -530,20 +555,30 @@ export class GameRenderer {
       if ((player.speedBoostTimer ?? 0) > 0) {
         const trailAlpha = 0.4 + 0.2 * Math.sin(now / 80)
         ctx.globalAlpha = trailAlpha
-        ctx.fillStyle = '#ffdd00'
+        ctx.fillStyle = "#ffdd00"
         for (let i = 1; i <= 3; i++) {
           ctx.globalAlpha = trailAlpha * (1 - i / 4)
-          ctx.fillRect(drawX + 2, drawY + m.playerHeight + i * 3, m.playerWidth - 4, 2)
+          ctx.fillRect(
+            drawX + 2,
+            drawY + m.playerHeight + i * 3,
+            m.playerWidth - 4,
+            2,
+          )
         }
         ctx.globalAlpha = 1.0
       }
 
       // Double-shot: yellow tint outline
       if ((player.doubleShotTimer ?? 0) > 0) {
-        ctx.strokeStyle = '#ffdd00'
+        ctx.strokeStyle = "#ffdd00"
         ctx.lineWidth = 2
         ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now / 120)
-        ctx.strokeRect(drawX - 2, drawY - 2, m.playerWidth + 4, m.playerHeight + 4)
+        ctx.strokeRect(
+          drawX - 2,
+          drawY - 2,
+          m.playerWidth + 4,
+          m.playerHeight + 4,
+        )
         ctx.globalAlpha = 1.0
       }
 
@@ -554,10 +589,12 @@ export class GameRenderer {
         const r = Math.max(m.playerWidth, m.playerHeight) * 0.85
         // Pulse stronger when shield is about to expire (< 30 ticks = 1s)
         const lowTime = player.shieldTimer < 30
-        const pulse = lowTime ? 0.5 + 0.5 * Math.sin(now / 60) : 0.7 + 0.3 * Math.sin(now / 200)
-        ctx.strokeStyle = '#00ddff'
+        const pulse = lowTime
+          ? 0.5 + 0.5 * Math.sin(now / 60)
+          : 0.7 + 0.3 * Math.sin(now / 200)
+        ctx.strokeStyle = "#00ddff"
         ctx.lineWidth = 2
-        ctx.shadowColor = '#00ddff'
+        ctx.shadowColor = "#00ddff"
         ctx.shadowBlur = 12
         ctx.globalAlpha = pulse
         ctx.beginPath()
@@ -568,16 +605,19 @@ export class GameRenderer {
       }
 
       // Player label + lives + active buff timers
-      ctx.fillStyle = '#fff'
-      ctx.font = '10px JetBrains Mono, monospace'
-      ctx.textAlign = 'center'
-      const label = player.displayName ?? (isMe ? 'YOU' : `P${index + 1}`)
-      let statusLine = `${label}  ${'♥'.repeat(player.lives)}${'♡'.repeat(Math.max(0, 3 - player.lives))}`
+      ctx.fillStyle = "#fff"
+      ctx.font = "10px JetBrains Mono, monospace"
+      ctx.textAlign = "center"
+      const label = player.displayName ?? (isMe ? "YOU" : `P${index + 1}`)
+      let statusLine = `${label}  ${"♥".repeat(player.lives)}${"♡".repeat(Math.max(0, 3 - player.lives))}`
       const buffs: string[] = []
-      if ((player.shieldTimer ?? 0) > 0) buffs.push(`🛡${Math.ceil(player.shieldTimer / 30)}s`)
-      if ((player.doubleShotTimer ?? 0) > 0) buffs.push(`🔱${Math.ceil(player.doubleShotTimer / 30)}s`)
-      if ((player.speedBoostTimer ?? 0) > 0) buffs.push(`⚡${Math.ceil(player.speedBoostTimer / 30)}s`)
-      if (buffs.length > 0) statusLine += `  ${buffs.join(' ')}`
+      if ((player.shieldTimer ?? 0) > 0)
+        buffs.push(`🛡${Math.ceil(player.shieldTimer / 30)}s`)
+      if ((player.doubleShotTimer ?? 0) > 0)
+        buffs.push(`🔱${Math.ceil(player.doubleShotTimer / 30)}s`)
+      if ((player.speedBoostTimer ?? 0) > 0)
+        buffs.push(`⚡${Math.ceil(player.speedBoostTimer / 30)}s`)
+      if (buffs.length > 0) statusLine += `  ${buffs.join(" ")}`
       ctx.fillText(statusLine, player.x, playerY + m.playerHeight / 2 + 14)
     })
 
@@ -621,7 +661,7 @@ export class GameRenderer {
 
     // Hot core
     ctx.shadowBlur = 0
-    ctx.fillStyle = '#ffe8a8'
+    ctx.fillStyle = "#ffe8a8"
     ctx.globalAlpha = 0.8 * flicker
     ctx.beginPath()
     ctx.moveTo(-flameHalfW * 0.45, 0)
@@ -649,13 +689,25 @@ export class GameRenderer {
     ctx.shadowColor = this.colors.bullet
     ctx.shadowBlur = 12
     for (const bullet of state.bullets) {
-      ctx.drawImage(this.sprites.bullet, bullet.x - w / 2, bullet.y - h / 2, w, h)
+      ctx.drawImage(
+        this.sprites.bullet,
+        bullet.x - w / 2,
+        bullet.y - h / 2,
+        w,
+        h,
+      )
     }
 
     // Sharp pass (no blur, on top — makes the core pop)
     ctx.shadowBlur = 0
     for (const bullet of state.bullets) {
-      ctx.drawImage(this.sprites.bullet, bullet.x - w / 2, bullet.y - h / 2, w, h)
+      ctx.drawImage(
+        this.sprites.bullet,
+        bullet.x - w / 2,
+        bullet.y - h / 2,
+        w,
+        h,
+      )
     }
 
     ctx.imageSmoothingEnabled = true
@@ -672,7 +724,7 @@ export class GameRenderer {
     ctx.imageSmoothingEnabled = this.useSvgSprites
 
     for (const e of enemies) {
-      const isPatrol = e.type === 'patrol'
+      const isPatrol = e.type === "patrol"
       const visW = isPatrol ? this.enemyPatrolVisW : this.enemyGruntVisW
       const visH = isPatrol ? this.enemyPatrolVisH : this.enemyGruntVisH
       const dx = e.x - visW / 2
@@ -714,12 +766,12 @@ export class GameRenderer {
       let sprite: HTMLCanvasElement
       let glow: string
 
-      if (b.kind === 'aimed') {
+      if (b.kind === "aimed") {
         sprite = this.sprites.enemyBulletAimed
-        glow = 'rgba(255, 154, 31, 0.65)'
-      } else if (b.kind === 'comet') {
+        glow = "rgba(255, 154, 31, 0.65)"
+      } else if (b.kind === "comet") {
         sprite = this.sprites.enemyBulletComet
-        glow = 'rgba(111, 168, 255, 0.7)'
+        glow = "rgba(111, 168, 255, 0.7)"
 
         // Motion trail — 4 fading copies opposite velocity vector.
         const mag = Math.hypot(b.dx, b.dy) || 1
@@ -760,15 +812,16 @@ export class GameRenderer {
     const half = m.powerUpSize / 2
 
     const STYLE: Record<string, { color: string; glyph: string }> = {
-      extra_life:    { color: '#ff5577', glyph: '♥' },
-      double_shot:   { color: '#ffdd00', glyph: '⫶' },
-      speed_boost:   { color: '#33aaff', glyph: '⚡' },
-      shield:        { color: '#00ddff', glyph: '◉' },
-      points_bonus:  { color: '#ffcc00', glyph: '$' },
+      extra_life: { color: "#ff5577", glyph: "♥" },
+      double_shot: { color: "#ffdd00", glyph: "⫶" },
+      speed_boost: { color: "#33aaff", glyph: "⚡" },
+      shield: { color: "#00ddff", glyph: "◉" },
+      points_bonus: { color: "#ffcc00", glyph: "$" },
     }
 
     // SVG sprites the handoff delivered (only 2 of 5 kinds).
-    const svgKindToSprite: Partial<Record<string, HTMLCanvasElement>> = this.useSvgSprites
+    const svgKindToSprite: Partial<Record<string, HTMLCanvasElement>> = this
+      .useSvgSprites
       ? {
           speed_boost: this.sprites.powerUpSpeed,
           double_shot: this.sprites.powerUpMultishot,
@@ -779,7 +832,7 @@ export class GameRenderer {
     const visHalf = visSize / 2
 
     for (const pu of powerUps) {
-      const style = STYLE[pu.kind] ?? { color: '#ffffff', glyph: '?' }
+      const style = STYLE[pu.kind] ?? { color: "#ffffff", glyph: "?" }
       const cx = pu.x
       const cy = pu.y + bob
 
@@ -820,7 +873,7 @@ export class GameRenderer {
       ctx.fill()
 
       // Inner darker disc for contrast
-      ctx.fillStyle = 'rgba(10, 10, 15, 0.85)'
+      ctx.fillStyle = "rgba(10, 10, 15, 0.85)"
       ctx.beginPath()
       ctx.arc(cx, cy, half - 3, 0, Math.PI * 2)
       ctx.fill()
@@ -828,10 +881,10 @@ export class GameRenderer {
       // Glyph
       ctx.fillStyle = style.color
       ctx.font = `bold ${Math.floor(m.powerUpSize * 0.65)}px JetBrains Mono, monospace`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
+      ctx.textAlign = "center"
+      ctx.textBaseline = "middle"
       ctx.fillText(style.glyph, cx, cy + 1)
-      ctx.textBaseline = 'alphabetic'
+      ctx.textBaseline = "alphabetic"
     }
   }
 
@@ -853,7 +906,8 @@ export class GameRenderer {
       ctx.save()
       ctx.imageSmoothingEnabled = true
       for (const sp of sparks) {
-        const fade = sp.life > 0 ? Math.max(0, Math.min(1, sp.ttl / sp.life)) : 0
+        const fade =
+          sp.life > 0 ? Math.max(0, Math.min(1, sp.ttl / sp.life)) : 0
         if (fade <= 0) continue
         // life ratio: 1 at birth → 0 at death. Pick frame as it ages.
         const sprite = fade > 0.66 ? f1 : fade > 0.33 ? f2 : f3
@@ -880,8 +934,8 @@ export class GameRenderer {
 
       // Outer glow halo
       ctx.globalAlpha = fade * 0.4
-      ctx.fillStyle = '#ffaa00'
-      ctx.shadowColor = '#ffaa00'
+      ctx.fillStyle = "#ffaa00"
+      ctx.shadowColor = "#ffaa00"
       ctx.shadowBlur = 14
       ctx.beginPath()
       ctx.arc(sp.x, sp.y, radius * 1.6, 0, Math.PI * 2)
@@ -889,7 +943,7 @@ export class GameRenderer {
 
       // Bright core
       ctx.globalAlpha = fade
-      ctx.fillStyle = '#ffe066'
+      ctx.fillStyle = "#ffe066"
       ctx.shadowBlur = 0
       ctx.beginPath()
       ctx.arc(sp.x, sp.y, radius * 0.6, 0, Math.PI * 2)
@@ -903,15 +957,28 @@ export class GameRenderer {
 
   private renderBoss(boss: Boss): void {
     const now = performance.now()
-    if (this.useSvgSprites && this.sprites.bossIdle && this.sprites.bossCharge && this.sprites.bossAngry) {
+    if (
+      this.useSvgSprites &&
+      this.sprites.bossIdle &&
+      this.sprites.bossCharge &&
+      this.sprites.bossAngry
+    ) {
       this.renderBossSvg(boss, now)
       return
     }
     switch (boss.kind) {
-      case 'sentinel': this.renderSentinel(boss, now); break
-      case 'warden':   this.renderWarden(boss, now); break
-      case 'citadel':  this.renderCitadel(boss, now); break
-      case 'nexus':    this.renderNexus(boss, now); break
+      case "sentinel":
+        this.renderSentinel(boss, now)
+        break
+      case "warden":
+        this.renderWarden(boss, now)
+        break
+      case "citadel":
+        this.renderCitadel(boss, now)
+        break
+      case "nexus":
+        this.renderNexus(boss, now)
+        break
     }
   }
 
@@ -929,18 +996,19 @@ export class GameRenderer {
     const h = BOSS_VISUAL_SIZE.h
 
     const hpPct = boss.maxHp > 0 ? boss.hp / boss.maxHp : 1
-    const sprite =
-      boss.shieldActive ? this.sprites.bossCharge! :
-      hpPct < 0.3 ? this.sprites.bossAngry! :
-      this.sprites.bossIdle!
+    const sprite = boss.shieldActive
+      ? this.sprites.bossCharge!
+      : hpPct < 0.3
+        ? this.sprites.bossAngry!
+        : this.sprites.bossIdle!
 
     ctx.save()
     ctx.imageSmoothingEnabled = true
     ctx.shadowColor = boss.shieldActive
-      ? 'rgba(253, 224, 71, 0.6)'
+      ? "rgba(253, 224, 71, 0.6)"
       : hpPct < 0.3
-        ? 'rgba(248, 113, 113, 0.6)'
-        : 'rgba(167, 139, 250, 0.55)'
+        ? "rgba(248, 113, 113, 0.6)"
+        : "rgba(167, 139, 250, 0.55)"
     ctx.shadowBlur = 22
     ctx.drawImage(sprite, cx - w / 2, cy - h / 2, w, h)
     ctx.restore()
@@ -949,9 +1017,9 @@ export class GameRenderer {
     if (boss.shieldActive) {
       ctx.save()
       const r = Math.max(w, h) * 0.55 + Math.sin(now / 220) * 3
-      ctx.strokeStyle = 'rgba(253, 224, 71, 0.65)'
+      ctx.strokeStyle = "rgba(253, 224, 71, 0.65)"
       ctx.lineWidth = 2
-      ctx.shadowColor = 'rgba(253, 224, 71, 0.6)'
+      ctx.shadowColor = "rgba(253, 224, 71, 0.6)"
       ctx.shadowBlur = 12
       ctx.beginPath()
       ctx.arc(cx, cy, r, 0, Math.PI * 2)
@@ -964,12 +1032,13 @@ export class GameRenderer {
     const ctx = this.ctx
     const cx = boss.x
     const cy = boss.y + Math.sin(now / 600) * 2
-    const w = 80, h = 50
-    const color = '#ff4d55'
+    const w = 80,
+      h = 50
+    const color = "#ff4d55"
 
     ctx.save()
     // Chassis with glow
-    ctx.shadowColor = 'rgba(255, 77, 85, 0.7)'
+    ctx.shadowColor = "rgba(255, 77, 85, 0.7)"
     ctx.shadowBlur = 22
     ctx.fillStyle = color
     ctx.beginPath()
@@ -983,7 +1052,7 @@ export class GameRenderer {
     ctx.shadowBlur = 0
 
     // Dark inset
-    ctx.fillStyle = '#3a0a0d'
+    ctx.fillStyle = "#3a0a0d"
     ctx.fillRect(cx - 18, cy - 9, 36, 18)
 
     // Eye ports (pulse)
@@ -993,7 +1062,7 @@ export class GameRenderer {
     ctx.fillRect(cx + 5, cy - 4, 7, 7)
 
     // Thrusters
-    ctx.fillStyle = '#ffb347'
+    ctx.fillStyle = "#ffb347"
     ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now / 60)
     ctx.fillRect(cx - 18, cy + h / 2 - 2, 6, 6)
     ctx.fillRect(cx + 12, cy + h / 2 - 2, 6, 6)
@@ -1004,11 +1073,12 @@ export class GameRenderer {
     const ctx = this.ctx
     const cx = boss.x
     const cy = boss.y + Math.sin(now / 800) * 3
-    const w = 110, h = 55
-    const color = '#ff9933'
+    const w = 110,
+      h = 55
+    const color = "#ff9933"
 
     ctx.save()
-    ctx.shadowColor = 'rgba(255, 153, 51, 0.6)'
+    ctx.shadowColor = "rgba(255, 153, 51, 0.6)"
     ctx.shadowBlur = 22
 
     // Central body (wide hex)
@@ -1025,7 +1095,7 @@ export class GameRenderer {
     ctx.shadowBlur = 0
 
     // Dark central band
-    ctx.fillStyle = '#3a1e05'
+    ctx.fillStyle = "#3a1e05"
     ctx.fillRect(cx - w / 2 + 14, cy - 6, w - 28, 12)
 
     // Side ports (pulse bright briefly to telegraph escort spawn)
@@ -1033,7 +1103,7 @@ export class GameRenderer {
     for (const side of [-1, 1]) {
       const px = cx + side * (w / 2 - 4)
       ctx.fillStyle = `rgba(255, 230, 120, ${portGlow})`
-      ctx.shadowColor = 'rgba(255, 230, 120, 0.9)'
+      ctx.shadowColor = "rgba(255, 230, 120, 0.9)"
       ctx.shadowBlur = 10
       ctx.beginPath()
       ctx.arc(px, cy, 5, 0, Math.PI * 2)
@@ -1042,7 +1112,7 @@ export class GameRenderer {
     ctx.shadowBlur = 0
 
     // Row of window slits
-    ctx.fillStyle = '#ffe08a'
+    ctx.fillStyle = "#ffe08a"
     for (let i = -2; i <= 2; i++) {
       ctx.fillRect(cx + i * 12 - 2, cy - 2, 4, 4)
     }
@@ -1054,11 +1124,11 @@ export class GameRenderer {
     const cx = boss.x
     const cy = boss.y
     const r = 38
-    const color = '#33d9d9'
+    const color = "#33d9d9"
 
     ctx.save()
     // Outer hex ring
-    ctx.shadowColor = 'rgba(51, 217, 217, 0.55)'
+    ctx.shadowColor = "rgba(51, 217, 217, 0.55)"
     ctx.shadowBlur = 20
     ctx.fillStyle = color
     ctx.beginPath()
@@ -1074,7 +1144,7 @@ export class GameRenderer {
     ctx.shadowBlur = 0
 
     // Inner dark hex
-    ctx.fillStyle = '#062828'
+    ctx.fillStyle = "#062828"
     ctx.beginPath()
     for (let i = 0; i < 6; i++) {
       const a = (Math.PI / 3) * i - Math.PI / 2
@@ -1088,7 +1158,7 @@ export class GameRenderer {
 
     // Pulsing core
     const corePulse = 0.7 + 0.3 * Math.sin(now / 180)
-    ctx.shadowColor = '#a8fff1'
+    ctx.shadowColor = "#a8fff1"
     ctx.shadowBlur = 14
     ctx.fillStyle = `rgba(168, 255, 241, ${corePulse})`
     ctx.beginPath()
@@ -1099,9 +1169,9 @@ export class GameRenderer {
     // Shield — concentric pulsing hex halo when active
     if (boss.shieldActive) {
       const shieldR = r + 10 + Math.sin(now / 220) * 3
-      ctx.strokeStyle = 'rgba(120, 255, 240, 0.75)'
+      ctx.strokeStyle = "rgba(120, 255, 240, 0.75)"
       ctx.lineWidth = 2
-      ctx.shadowColor = 'rgba(120, 255, 240, 0.6)'
+      ctx.shadowColor = "rgba(120, 255, 240, 0.6)"
       ctx.shadowBlur = 12
       ctx.beginPath()
       for (let i = 0; i < 6; i++) {
@@ -1125,13 +1195,13 @@ export class GameRenderer {
     const r = 46
     // Phase shifts the accent palette and animation speed.
     const phase = Math.max(1, boss.phase ?? 1)
-    const bodyColor = phase >= 2 ? '#b645ff' : '#7a45ff'
-    const accentColor = phase >= 3 ? '#ff66cc' : '#d89eff'
+    const bodyColor = phase >= 2 ? "#b645ff" : "#7a45ff"
+    const accentColor = phase >= 3 ? "#ff66cc" : "#d89eff"
     const orbitSpeed = 1 + (phase - 1) * 0.5
 
     ctx.save()
     // Central core
-    ctx.shadowColor = 'rgba(130, 90, 255, 0.6)'
+    ctx.shadowColor = "rgba(130, 90, 255, 0.6)"
     ctx.shadowBlur = 24
     ctx.fillStyle = bodyColor
     ctx.beginPath()
@@ -1140,7 +1210,7 @@ export class GameRenderer {
     ctx.shadowBlur = 0
 
     // Dark inner
-    ctx.fillStyle = '#1a0830'
+    ctx.fillStyle = "#1a0830"
     ctx.beginPath()
     ctx.arc(cx, cy, r * 0.35, 0, Math.PI * 2)
     ctx.fill()
@@ -1173,7 +1243,7 @@ export class GameRenderer {
 
     if (boss.shieldActive) {
       const shieldR = r + 12 + Math.sin(now / 200) * 4
-      ctx.strokeStyle = 'rgba(220, 180, 255, 0.6)'
+      ctx.strokeStyle = "rgba(220, 180, 255, 0.6)"
       ctx.lineWidth = 2
       ctx.beginPath()
       ctx.arc(cx, cy, shieldR, 0, Math.PI * 2)
@@ -1195,45 +1265,54 @@ export class GameRenderer {
 
     ctx.save()
     // Backdrop
-    ctx.fillStyle = 'rgba(10, 12, 20, 0.72)'
+    ctx.fillStyle = "rgba(10, 12, 20, 0.72)"
     ctx.fillRect(x, y, blockW, blockH)
-    ctx.strokeStyle = 'rgba(200, 80, 80, 0.55)'
+    ctx.strokeStyle = "rgba(200, 80, 80, 0.55)"
     ctx.lineWidth = 1
     ctx.strokeRect(x + 0.5, y + 0.5, blockW - 1, blockH - 1)
 
     // Title
     const name = boss.kind.toUpperCase()
     const title = boss.phase > 1 ? `${name} — PHASE ${boss.phase}` : name
-    ctx.fillStyle = '#ffdddd'
-    ctx.font = 'bold 13px JetBrains Mono, monospace'
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
+    ctx.fillStyle = "#ffdddd"
+    ctx.font = "bold 13px JetBrains Mono, monospace"
+    ctx.textAlign = "left"
+    ctx.textBaseline = "alphabetic"
     ctx.fillText(title, x + padX, y + padY + 12)
 
     // Shield indicator
     if (boss.shieldActive) {
-      ctx.fillStyle = '#78fff0'
-      ctx.fillText('◉ SHIELD', x + padX + ctx.measureText(title).width + 14, y + padY + 12)
+      ctx.fillStyle = "#78fff0"
+      ctx.fillText(
+        "◉ SHIELD",
+        x + padX + ctx.measureText(title).width + 14,
+        y + padY + 12,
+      )
     }
 
     // HP numbers (right-aligned)
-    ctx.fillStyle = '#ccc'
-    ctx.font = '12px JetBrains Mono, monospace'
-    ctx.textAlign = 'right'
-    ctx.fillText(`${Math.max(0, boss.hp)} / ${boss.maxHp}`, x + blockW - padX, y + padY + 12)
+    ctx.fillStyle = "#ccc"
+    ctx.font = "12px JetBrains Mono, monospace"
+    ctx.textAlign = "right"
+    ctx.fillText(
+      `${Math.max(0, boss.hp)} / ${boss.maxHp}`,
+      x + blockW - padX,
+      y + padY + 12,
+    )
 
     // HP bar
     const barX = x + padX
     const barY = y + padY + 18
-    ctx.fillStyle = 'rgba(60, 20, 25, 0.9)'
+    ctx.fillStyle = "rgba(60, 20, 25, 0.9)"
     ctx.fillRect(barX, barY, barW, barH)
-    const pct = boss.maxHp > 0 ? Math.max(0, Math.min(1, boss.hp / boss.maxHp)) : 0
+    const pct =
+      boss.maxHp > 0 ? Math.max(0, Math.min(1, boss.hp / boss.maxHp)) : 0
     const grad = ctx.createLinearGradient(barX, barY, barX + barW, barY)
-    grad.addColorStop(0, '#ff6a6a')
-    grad.addColorStop(1, '#ffb84d')
+    grad.addColorStop(0, "#ff6a6a")
+    grad.addColorStop(1, "#ffb84d")
     ctx.fillStyle = grad
     ctx.fillRect(barX, barY, barW * pct, barH)
-    ctx.strokeStyle = 'rgba(255, 180, 180, 0.35)'
+    ctx.strokeStyle = "rgba(255, 180, 180, 0.35)"
     ctx.lineWidth = 1
     ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1)
     ctx.restore()
@@ -1259,12 +1338,12 @@ export class GameRenderer {
 
     ctx.save()
     // Rail (dim track)
-    ctx.fillStyle = 'rgba(200, 220, 255, 0.12)'
+    ctx.fillStyle = "rgba(200, 220, 255, 0.12)"
     ctx.fillRect(railX, railY, railW, railH)
 
     // Pill (visible window)
-    ctx.fillStyle = 'rgba(0, 255, 136, 0.7)'
-    ctx.shadowColor = 'rgba(0, 255, 136, 0.5)'
+    ctx.fillStyle = "rgba(0, 255, 136, 0.7)"
+    ctx.shadowColor = "rgba(0, 255, 136, 0.5)"
     ctx.shadowBlur = 6
     ctx.fillRect(railX, pillY, railW, pillH)
     ctx.restore()
@@ -1273,15 +1352,19 @@ export class GameRenderer {
   private renderPausedByOther(): void {
     const ctx = this.ctx
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
     ctx.fillRect(0, 0, this.width, this.height)
 
-    ctx.fillStyle = '#fff'
-    ctx.font = '24px JetBrains Mono, monospace'
-    ctx.textAlign = 'center'
-    ctx.fillText('PAUSED', this.width / 2, this.height / 2)
+    ctx.fillStyle = "#fff"
+    ctx.font = "24px JetBrains Mono, monospace"
+    ctx.textAlign = "center"
+    ctx.fillText("PAUSED", this.width / 2, this.height / 2)
 
-    ctx.font = '14px JetBrains Mono, monospace'
-    ctx.fillText('Waiting for other player...', this.width / 2, this.height / 2 + 30)
+    ctx.font = "14px JetBrains Mono, monospace"
+    ctx.fillText(
+      "Waiting for other player...",
+      this.width / 2,
+      this.height / 2 + 30,
+    )
   }
 }

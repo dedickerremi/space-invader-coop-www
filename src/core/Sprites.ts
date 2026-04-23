@@ -3,8 +3,8 @@
 // Framework-agnostic: uses offscreen Canvas to create sprites
 // ============================================================
 
-import { getShip, resolveTint } from './ships'
-import type { ShipKey } from './ships'
+import { getShip, resolveTint } from "./ships"
+import type { ShipKey } from "./ships"
 
 // --- Pixel patterns (1 = filled, 0 = empty) ---
 // Player ship patterns live in ./ships (shared with the home-page selector).
@@ -142,10 +142,10 @@ const POWERUP_MULTISHOT_PATTERN = [
 function createSprite(pattern: number[][], color: string): HTMLCanvasElement {
   const h = pattern.length
   const w = pattern[0].length
-  const canvas = document.createElement('canvas')
+  const canvas = document.createElement("canvas")
   canvas.width = w
   canvas.height = h
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext("2d")!
 
   ctx.fillStyle = color
   for (let y = 0; y < h; y++) {
@@ -168,10 +168,10 @@ export function createLayeredSprite(
 ): HTMLCanvasElement {
   const h = layers[0].pattern.length
   const w = layers[0].pattern[0].length
-  const canvas = document.createElement('canvas')
+  const canvas = document.createElement("canvas")
   canvas.width = w
   canvas.height = h
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext("2d")!
 
   for (const { pattern, color } of layers) {
     ctx.fillStyle = color
@@ -202,7 +202,11 @@ export type Star = {
 /**
  * Generate a random star field.
  */
-export function generateStars(width: number, height: number, count = 160): Star[] {
+export function generateStars(
+  width: number,
+  height: number,
+  count = 160,
+): Star[] {
   const stars: Star[] = []
   for (let i = 0; i < count; i++) {
     const r = Math.random()
@@ -213,7 +217,10 @@ export function generateStars(width: number, height: number, count = 160): Star[
       brightness: 0.25 + Math.random() * 0.65,
       twinkleSpeed: 0.5 + Math.random() * 2,
       flare: r < 0.07,
-      tint: (Math.random() < 0.1 ? 1 : Math.random() < 0.04 ? 2 : 0) as 0 | 1 | 2,
+      tint: (Math.random() < 0.1 ? 1 : Math.random() < 0.04 ? 2 : 0) as
+        | 0
+        | 1
+        | 2,
     })
   }
   return stars
@@ -223,19 +230,52 @@ export function generateStars(width: number, height: number, count = 160): Star[
  * Pre-render a soft nebula background into an offscreen canvas.
  * Returns a texture the renderer blits behind the stars each frame.
  */
-export function generateNebula(width: number, height: number): HTMLCanvasElement {
-  const canvas = document.createElement('canvas')
+export function generateNebula(
+  width: number,
+  height: number,
+): HTMLCanvasElement {
+  const canvas = document.createElement("canvas")
   canvas.width = width
   canvas.height = height
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext("2d")!
 
   const blobs: { x: number; y: number; r: number; color: string }[] = [
-    { x: width * 0.2, y: height * 0.25, r: Math.max(width, height) * 0.35, color: '90, 60, 160' },
-    { x: width * 0.75, y: height * 0.35, r: Math.max(width, height) * 0.3, color: '60, 120, 190' },
-    { x: width * 0.35, y: height * 0.75, r: Math.max(width, height) * 0.32, color: '180, 80, 140' },
-    { x: width * 0.85, y: height * 0.8, r: Math.max(width, height) * 0.25, color: '30, 170, 180' },
-    { x: width * 0.5, y: height * 0.5, r: Math.max(width, height) * 0.2, color: '40, 50, 120' },
-    { x: width * 0.1, y: height * 0.6, r: Math.max(width, height) * 0.22, color: '110, 40, 180' },
+    {
+      x: width * 0.2,
+      y: height * 0.25,
+      r: Math.max(width, height) * 0.35,
+      color: "90, 60, 160",
+    },
+    {
+      x: width * 0.75,
+      y: height * 0.35,
+      r: Math.max(width, height) * 0.3,
+      color: "60, 120, 190",
+    },
+    {
+      x: width * 0.35,
+      y: height * 0.75,
+      r: Math.max(width, height) * 0.32,
+      color: "180, 80, 140",
+    },
+    {
+      x: width * 0.85,
+      y: height * 0.8,
+      r: Math.max(width, height) * 0.25,
+      color: "30, 170, 180",
+    },
+    {
+      x: width * 0.5,
+      y: height * 0.5,
+      r: Math.max(width, height) * 0.2,
+      color: "40, 50, 120",
+    },
+    {
+      x: width * 0.1,
+      y: height * 0.6,
+      r: Math.max(width, height) * 0.22,
+      color: "110, 40, 180",
+    },
   ]
 
   for (const b of blobs) {
@@ -294,11 +334,17 @@ export type SpriteColors = {
  * Generate all game sprites with given colors.
  * Call once at startup, then use with drawImage.
  */
-export function createSpriteSheet(colors: SpriteColors, shipKey?: ShipKey): SpriteSheet {
+export function createSpriteSheet(
+  colors: SpriteColors,
+  shipKey?: ShipKey,
+): SpriteSheet {
   const ship = getShip(shipKey)
   const buildPlayer = (hullColor: string): HTMLCanvasElement =>
     createLayeredSprite(
-      ship.layers.map((l) => ({ pattern: l.pattern, color: resolveTint(l.tint, hullColor) })),
+      ship.layers.map((l) => ({
+        pattern: l.pattern,
+        color: resolveTint(l.tint, hullColor),
+      })),
     )
 
   return {
@@ -311,21 +357,21 @@ export function createSpriteSheet(colors: SpriteColors, shipKey?: ShipKey): Spri
     patrolB: createSprite(PATROL_PATTERN_B, colors.enemyPatrol),
     bullet: createLayeredSprite([
       { pattern: BULLET_SHELL_PATTERN, color: colors.bullet },
-      { pattern: BULLET_CORE_PATTERN, color: '#ffffff' },
+      { pattern: BULLET_CORE_PATTERN, color: "#ffffff" },
     ]),
     enemyBullet: createLayeredSprite([
       { pattern: ENEMY_BULLET_SHELL_PATTERN, color: colors.enemyBullet },
-      { pattern: ENEMY_BULLET_CORE_PATTERN, color: '#fff1d6' },
+      { pattern: ENEMY_BULLET_CORE_PATTERN, color: "#fff1d6" },
     ]),
     enemyBulletAimed: createLayeredSprite([
-      { pattern: ENEMY_BULLET_SHELL_PATTERN, color: '#ff9a1f' },
-      { pattern: ENEMY_BULLET_CORE_PATTERN, color: '#ffe8a8' },
+      { pattern: ENEMY_BULLET_SHELL_PATTERN, color: "#ff9a1f" },
+      { pattern: ENEMY_BULLET_CORE_PATTERN, color: "#ffe8a8" },
     ]),
     enemyBulletComet: createLayeredSprite([
-      { pattern: ENEMY_BULLET_SHELL_PATTERN, color: '#6fa8ff' },
-      { pattern: ENEMY_BULLET_CORE_PATTERN, color: '#e8f4ff' },
+      { pattern: ENEMY_BULLET_SHELL_PATTERN, color: "#6fa8ff" },
+      { pattern: ENEMY_BULLET_CORE_PATTERN, color: "#e8f4ff" },
     ]),
-    powerUpSpeed: createSprite(POWERUP_SPEED_PATTERN, '#ffdd00'),
-    powerUpMultishot: createSprite(POWERUP_MULTISHOT_PATTERN, '#00ddff'),
+    powerUpSpeed: createSprite(POWERUP_SPEED_PATTERN, "#ffdd00"),
+    powerUpMultishot: createSprite(POWERUP_MULTISHOT_PATTERN, "#00ddff"),
   }
 }
