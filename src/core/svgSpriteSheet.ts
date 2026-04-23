@@ -17,11 +17,19 @@ import {
   BulletEnemy,
   PowerUpSpeed,
   PowerUpMultishot,
+  ExplosionFrame1,
+  ExplosionFrame2,
+  ExplosionFrame3,
+  HitFlash,
+  MuzzleFlash,
   SHIP_SVG_SIZE,
   BULLET_PLAYER_SIZE,
   BULLET_ENEMY_SIZE,
   POWERUP_SVG_SIZE,
   ENEMY_SVG_SIZE,
+  EXPLOSION_SVG_SIZE,
+  HIT_FLASH_SVG_SIZE,
+  MUZZLE_FLASH_SVG_SIZE,
   type ShipColors,
 } from './svgSprites'
 import { rasterizeElement, type RasterizeOptions } from './svgRasterizer'
@@ -65,6 +73,11 @@ export async function createSpriteSheetSvg(
     enemyBulletComet,
     powerUpSpeed,
     powerUpMultishot,
+    explosion1,
+    explosion2,
+    explosion3,
+    hitFlash,
+    muzzleFlash,
   ] = await Promise.all([
     rasterizeElement(Ship(shipColorsFromHull(colors.player1)), size.w, size.h, options),
     rasterizeElement(Ship(shipColorsFromHull(colors.player2)), size.w, size.h, options),
@@ -119,6 +132,11 @@ export async function createSpriteSheetSvg(
     ),
     rasterizeElement(PowerUpSpeed(), POWERUP_SVG_SIZE.w, POWERUP_SVG_SIZE.h, options),
     rasterizeElement(PowerUpMultishot(), POWERUP_SVG_SIZE.w, POWERUP_SVG_SIZE.h, options),
+    rasterizeElement(ExplosionFrame1(), EXPLOSION_SVG_SIZE.w, EXPLOSION_SVG_SIZE.h, options),
+    rasterizeElement(ExplosionFrame2(), EXPLOSION_SVG_SIZE.w, EXPLOSION_SVG_SIZE.h, options),
+    rasterizeElement(ExplosionFrame3(), EXPLOSION_SVG_SIZE.w, EXPLOSION_SVG_SIZE.h, options),
+    rasterizeElement(HitFlash(), HIT_FLASH_SVG_SIZE.w, HIT_FLASH_SVG_SIZE.h, options),
+    rasterizeElement(MuzzleFlash(), MUZZLE_FLASH_SVG_SIZE.w, MUZZLE_FLASH_SVG_SIZE.h, options),
   ])
 
   return {
@@ -135,6 +153,11 @@ export async function createSpriteSheetSvg(
     enemyBulletComet,
     powerUpSpeed,
     powerUpMultishot,
+    explosion1,
+    explosion2,
+    explosion3,
+    hitFlash,
+    muzzleFlash,
   }
 }
 

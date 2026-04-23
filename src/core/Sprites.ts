@@ -268,6 +268,12 @@ export type SpriteSheet = {
   enemyBulletComet: HTMLCanvasElement
   powerUpSpeed: HTMLCanvasElement
   powerUpMultishot: HTMLCanvasElement
+  /** FX — only populated by the SVG sheet builder. */
+  explosion1?: HTMLCanvasElement
+  explosion2?: HTMLCanvasElement
+  explosion3?: HTMLCanvasElement
+  hitFlash?: HTMLCanvasElement
+  muzzleFlash?: HTMLCanvasElement
 }
 
 export type SpriteColors = {
