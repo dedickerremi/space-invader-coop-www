@@ -112,8 +112,8 @@ export default function Home() {
           <button onClick={() => joinQueue('solo')} style={buttonStyle}>
             Single Player
           </button>
-          <button onClick={() => joinQueue('coop')} style={buttonStyle}>
-            Multiplayer
+          <button disabled style={disabledButtonStyle} title="Temporarily disabled">
+            Multiplayer (Disabled)
           </button>
         </div>
       )}
@@ -203,6 +203,14 @@ const buttonStyle: React.CSSProperties = {
   cursor: 'pointer',
   transition: 'all 0.2s',
   fontFamily: 'inherit',
+}
+
+const disabledButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  borderColor: '#444',
+  color: '#555',
+  cursor: 'not-allowed',
+  opacity: 0.65,
 }
 
 const cancelButtonStyle: React.CSSProperties = {
