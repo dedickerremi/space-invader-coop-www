@@ -2,6 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { addToQueue, getPlayerMatch, getTokenForPlayer, createAndStoreSoloMatch } from '@/lib/queue'
 import { getWsUrl } from '@/lib/matchmaking'
 
+declare global {
+  // eslint-disable-next-line no-var
+  var _queueTokens: Map<string, string> | undefined
+}
+
+function getQueueTokens(): Map<string, string> {
+  if (!globalThis._queueTokens) {
+    globalThis._queueTokens = new Map()
+  }
+  return globalThis._queueTokens
+}
+
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -52,9 +68,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    const queueToken = `token-${generateId()}`
+    getQueueTokens().set(userId, queueToken)
+
     return NextResponse.json({
       status: 'queued',
-      message: 'Waiting for another player',
+      queueToken,
+      wsUrl: getWsUrl(),
     })
   } catch {
     return NextResponse.json(

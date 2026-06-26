@@ -2,53 +2,48 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { MatchmakingClient } from '@/core'
+import { MatchmakingClient, GameClient } from '@/core'
 import type { MatchData, GameMode } from '@/core'
 import { AuthMenu } from '@/components/AuthMenu'
 import { ShipSelector } from '@/components/ShipSelector'
 
-type MatchStatus = 'idle' | 'joining' | 'waiting' | 'ready' | 'error'
+type MatchStatus = 'idle' | 'joining' | 'waiting' | 'matchFound' | 'ready' | 'timeout' | 'error'
 
 export default function Home() {
   const router = useRouter()
   const matchmakingRef = useRef(new MatchmakingClient())
+  const queueClientRef = useRef<GameClient | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [status, setStatus] = useState<MatchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [matchData, setMatchData] = useState<MatchData | null>(null)
+  const [onlinePlayers, setOnlinePlayers] = useState<number | null>(null)
 
   // Generate userId on mount
   useEffect(() => {
     setUserId(MatchmakingClient.generateUserId())
   }, [])
 
-  // Poll for match when waiting
+  // Fetch online player count on mount and every 30s
   useEffect(() => {
-    if (status !== 'waiting' || !userId) return
-
-    const mm = matchmakingRef.current
-    const interval = setInterval(async () => {
+    const fetchOnline = async () => {
       try {
-        const result = await mm.pollMatch(userId)
-        if (result.status === 'ready') {
-          setMatchData({
-            matchId: result.matchId,
-            matchToken: result.matchToken,
-            wsUrl: result.wsUrl,
-            playerId: result.playerId,
-            mode: result.mode,
-          })
-          setStatus('ready')
+        const res = await fetch('/api/online')
+        if (res.ok) {
+          const data = await res.json()
+          setOnlinePlayers(data.playersOnline)
         }
-      } catch (err) {
-        console.error('Poll error:', err)
+      } catch {
+        // ignore
       }
-    }, 500)
+    }
 
+    fetchOnline()
+    const interval = setInterval(fetchOnline, 30_000)
     return () => clearInterval(interval)
-  }, [status, userId])
+  }, [])
 
-  // Redirect to game when match is ready
+  // Redirect to game when match is ready (solo path)
   useEffect(() => {
     if (status === 'ready' && matchData) {
       sessionStorage.setItem('matchData', JSON.stringify(matchData))
@@ -56,7 +51,95 @@ export default function Home() {
     }
   }, [status, matchData, router])
 
-  const joinQueue = useCallback(async (mode: GameMode = 'coop') => {
+  const cancelQueue = useCallback(() => {
+    const client = queueClientRef.current
+    if (client) {
+      client.disconnect()
+      queueClientRef.current = null
+    }
+    setStatus('idle')
+  }, [])
+
+  const joinQueueViaWs = useCallback(async () => {
+    if (!userId) return
+
+    setStatus('joining')
+    setError(null)
+
+    try {
+      const res = await fetch('/api/queue/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, mode: 'coop' }),
+      })
+      const result = await res.json()
+
+      if (result.status === 'matched') {
+        // Rare: matched immediately (was already 2 in queue)
+        setMatchData({
+          matchId: result.matchId,
+          matchToken: result.matchToken,
+          wsUrl: result.wsUrl,
+          playerId: result.playerId,
+          mode: result.mode,
+        })
+        setStatus('ready')
+        return
+      }
+
+      if (result.status !== 'queued') {
+        setStatus('error')
+        setError(result.error ?? 'Failed to join queue')
+        return
+      }
+
+      const { queueToken, wsUrl } = result
+
+      const client = new GameClient()
+      queueClientRef.current = client
+
+      client.on('queued', () => {
+        setStatus('waiting')
+      })
+
+      client.on('matchFound', () => {
+        setStatus('matchFound')
+      })
+
+      client.on('welcome', (playerId, matchId) => {
+        const data: MatchData = {
+          matchId,
+          matchToken: queueToken,
+          wsUrl,
+          playerId,
+          mode: 'coop',
+        }
+        sessionStorage.setItem('matchData', JSON.stringify(data))
+        client.disconnect()
+        queueClientRef.current = null
+        router.push('/play')
+      })
+
+      client.on('queueTimeout', () => {
+        client.disconnect()
+        queueClientRef.current = null
+        setStatus('timeout')
+      })
+
+      client.connect(wsUrl, {
+        token: queueToken,
+        matchId: 'queue',
+        playerId: userId,
+        mode: 'coop',
+      })
+    } catch (err) {
+      setStatus('error')
+      setError('Failed to join queue')
+      console.error(err)
+    }
+  }, [userId, router])
+
+  const joinQueue = useCallback(async (mode: GameMode = 'solo') => {
     if (!userId) return
 
     setStatus('joining')
@@ -74,29 +157,15 @@ export default function Home() {
           mode: result.mode,
         })
         setStatus('ready')
-      } else if (result.status === 'queued') {
-        setStatus('waiting')
       } else {
         setStatus('error')
-        setError(result.error)
+        setError('error' in result ? result.error : 'Failed to join queue')
       }
     } catch (err) {
       setStatus('error')
       setError('Failed to join queue')
       console.error(err)
     }
-  }, [userId])
-
-  const leaveQueue = useCallback(async () => {
-    if (!userId) return
-
-    try {
-      await matchmakingRef.current.leaveQueue(userId)
-    } catch (err) {
-      console.error('Leave queue error:', err)
-    }
-
-    setStatus('idle')
   }, [userId])
 
   return (
@@ -108,14 +177,19 @@ export default function Home() {
       {status === 'idle' && <ShipSelector />}
 
       {status === 'idle' && (
-        <div style={modeButtonsStyle}>
-          <button onClick={() => joinQueue('solo')} style={buttonStyle}>
-            Single Player
-          </button>
-          <button disabled style={disabledButtonStyle} title="Temporarily disabled">
-            Multiplayer (Disabled)
-          </button>
-        </div>
+        <>
+          <div style={modeButtonsStyle}>
+            <button onClick={() => joinQueue('solo')} style={buttonStyle}>
+              Single Player
+            </button>
+            <button onClick={joinQueueViaWs} style={buttonStyle}>
+              Multiplayer
+            </button>
+          </div>
+          {onlinePlayers !== null && (
+            <div style={onlinePlayersStyle}>{onlinePlayers} players online</div>
+          )}
+        </>
       )}
 
       {status === 'joining' && (
@@ -127,16 +201,33 @@ export default function Home() {
           <div style={statusStyle}>
             <span style={pulseStyle}>●</span> Waiting for another player...
           </div>
-          <button onClick={leaveQueue} style={cancelButtonStyle}>
+          <button onClick={cancelQueue} style={cancelButtonStyle}>
             Cancel
           </button>
         </>
+      )}
+
+      {status === 'matchFound' && (
+        <div style={{ ...statusStyle, color: '#00ff88' }}>
+          <span style={pulseStyle}>●</span> Opponent found! Starting...
+        </div>
       )}
 
       {status === 'ready' && (
         <div style={{ ...statusStyle, color: '#00ff88' }}>
           Match found! Connecting...
         </div>
+      )}
+
+      {status === 'timeout' && (
+        <>
+          <div style={{ ...statusStyle, color: '#ff8800' }}>
+            No opponent found.
+          </div>
+          <button onClick={joinQueueViaWs} style={buttonStyle}>
+            Retry
+          </button>
+        </>
       )}
 
       {status === 'error' && (
@@ -157,7 +248,7 @@ export default function Home() {
   )
 }
 
-// --- Styles (unchanged) ---
+// --- Styles ---
 
 const containerStyle: React.CSSProperties = {
   minHeight: '100vh',
@@ -205,14 +296,6 @@ const buttonStyle: React.CSSProperties = {
   fontFamily: 'inherit',
 }
 
-const disabledButtonStyle: React.CSSProperties = {
-  ...buttonStyle,
-  borderColor: '#444',
-  color: '#555',
-  cursor: 'not-allowed',
-  opacity: 0.65,
-}
-
 const cancelButtonStyle: React.CSSProperties = {
   ...buttonStyle,
   marginTop: '1rem',
@@ -233,6 +316,12 @@ const statusStyle: React.CSSProperties = {
 const pulseStyle: React.CSSProperties = {
   color: '#00ff88',
   animation: 'pulse 1s ease-in-out infinite',
+}
+
+const onlinePlayersStyle: React.CSSProperties = {
+  marginTop: '1.5rem',
+  color: '#444',
+  fontSize: '0.8rem',
 }
 
 const userIdStyle: React.CSSProperties = {
