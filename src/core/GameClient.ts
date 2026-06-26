@@ -24,6 +24,9 @@ export type GameClientEventMap = {
   matchEnded: (reason: string) => void
   connectionChange: (status: ConnectionStatus) => void
   pingUpdate: (pingMs: number) => void
+  queued: (position: number) => void
+  matchFound: (matchId: string) => void
+  queueTimeout: (reason: string) => void
 }
 
 // --- GameClient class ---
@@ -191,6 +194,18 @@ export class GameClient {
         case 'PONG':
           this._pingMs = Math.round(performance.now() - message.timestamp)
           this.emit('pingUpdate', this._pingMs)
+          break
+
+        case 'QUEUED':
+          this.emit('queued', message.position)
+          break
+
+        case 'MATCH_FOUND':
+          this.emit('matchFound', message.matchId)
+          break
+
+        case 'QUEUE_TIMEOUT':
+          this.emit('queueTimeout', message.reason)
           break
       }
     } catch {

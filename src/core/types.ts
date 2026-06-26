@@ -140,8 +140,11 @@ export type WelcomeMessage = { type: 'WELCOME'; playerId: string; matchId: strin
 export type ErrorMessage = { type: 'ERROR'; reason: string }
 export type MatchEndedMessage = { type: 'MATCH_ENDED'; reason: string }
 export type PongMessage = { type: 'PONG'; timestamp: number }
+export type QueuedMessage = { type: 'QUEUED'; position: number }
+export type MatchFoundMessage = { type: 'MATCH_FOUND'; matchId: string }
+export type QueueTimeoutMessage = { type: 'QUEUE_TIMEOUT'; reason: string }
 
-export type ServerMessage = StateMessage | WelcomeMessage | ErrorMessage | MatchEndedMessage | PongMessage
+export type ServerMessage = StateMessage | WelcomeMessage | ErrorMessage | MatchEndedMessage | PongMessage | QueuedMessage | MatchFoundMessage | QueueTimeoutMessage
 
 // === CLIENT → SERVER MESSAGES ===
 
@@ -188,7 +191,7 @@ export type MatchData = {
 }
 
 export type QueueResult =
-  | { status: 'queued' }
+  | { status: 'queued'; queueToken: string; wsUrl: string }
   | { status: 'matched'; matchId: string; matchToken: string; wsUrl: string; playerId: string; mode: GameMode }
   | { status: 'error'; error: string }
 
