@@ -42,7 +42,7 @@ export class MatchmakingClient {
     }
 
     if (data.status === 'queued') {
-      return { status: 'queued' }
+      return { status: 'queued', queueToken: data.queueToken, wsUrl: data.wsUrl }
     }
 
     return { status: 'error', error: data.error || 'Unknown error' }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { addToQueue, getPlayerMatch, getTokenForPlayer, createAndStoreSoloMatch } from '@/lib/queue'
+import { getTokenForPlayer, createAndStoreSoloMatch } from '@/lib/queue'
 import { getWsUrl } from '@/lib/matchmaking'
 
 declare global {
@@ -50,24 +50,10 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Coop mode: add to queue (may trigger match creation)
-    addToQueue(userId)
-
-    // Check if match was created
-    const match = getPlayerMatch(userId)
-
-    if (match) {
-      const token = getTokenForPlayer(match.matchId, userId)
-      return NextResponse.json({
-        status: 'matched',
-        matchId: match.matchId,
-        matchToken: token,
-        wsUrl: getWsUrl(),
-        playerId: userId,
-        mode: 'coop',
-      })
-    }
-
+    // Coop mode: always return queued — the WS server handles all matching.
+    // Never short-circuit to 'matched' here: if player 2 arrives while player 1
+    // is already waiting on a WS queue connection, returning 'matched' causes
+    // player 2 to skip the WS entirely, leaving player 1 stuck forever.
     const queueToken = `token-${generateId()}`
     getQueueTokens().set(userId, queueToken)
 
