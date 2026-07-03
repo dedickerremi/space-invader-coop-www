@@ -25,6 +25,18 @@ export default function Home() {
     setUserId(MatchmakingClient.generateUserId())
   }, [])
 
+  // The Fly backend auto-stops when idle. Ping it as soon as the menu loads
+  // so the machine is awake by the time the player picks a mode, instead of
+  // paying the cold start on the WebSocket connect.
+  useEffect(() => {
+    // Same fallback as lib/matchmaking.ts
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001'
+    const httpUrl = wsUrl.replace(/^ws/, 'http')
+    fetch(`${httpUrl}/api/version`, { cache: 'no-store' }).catch(() => {
+      // Fire-and-forget: waking the machine is all that matters
+    })
+  }, [])
+
   // Fetch online player count on mount and every 30s
   useEffect(() => {
     const fetchOnline = async () => {
