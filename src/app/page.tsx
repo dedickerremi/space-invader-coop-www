@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MatchmakingClient, GameClient } from '@/core'
 import type { MatchData, GameMode } from '@/core'
+import { setPendingGame } from '@/core/pendingGame'
 import { AuthMenu } from '@/components/AuthMenu'
 import { ShipSelector } from '@/components/ShipSelector'
 
@@ -106,6 +107,14 @@ export default function Home() {
         setStatus('matchFound')
       })
 
+      client.on('connectionChange', (connStatus) => {
+        if (connStatus === 'error') {
+          setStatus('error')
+          setError('Cannot connect to game server')
+          queueClientRef.current = null
+        }
+      })
+
       client.on('welcome', (playerId, matchId) => {
         const data: MatchData = {
           matchId,
@@ -115,8 +124,9 @@ export default function Home() {
           mode: 'coop',
         }
         sessionStorage.setItem('matchData', JSON.stringify(data))
-        client.disconnect()
-        queueClientRef.current = null
+        // Store live client so GameCanvas can reuse the connection instead of reconnecting
+        setPendingGame({ client, matchId, playerId, wsUrl, mode: 'coop' })
+        queueClientRef.current = null  // prevent cancelQueue from disconnecting it
         router.push('/play')
       })
 
