@@ -17,6 +17,7 @@ import {
   SHIPS,
   BossAudio,
 } from '@/core'
+import { takePendingGame } from '@/core/pendingGame'
 import type { GameState, GameOverSummary, Bullet, GameMode, ShipKey, BossKind } from '@/core'
 import { SignInHint } from '@/components/SignInHint'
 import { createSpriteSheetSvg, isSvgSpritesEnabled } from '@/core/svgSpriteSheet'
@@ -212,8 +213,13 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
       }
     })()
 
-    const client = new GameClient()
+    const pending = takePendingGame()
+    const client = pending ? pending.client : new GameClient()
     clientRef.current = client
+
+    if (pending) {
+      client.removeAllListeners()
+    }
 
     client.on('connectionChange', (s) => {
       if (s === 'connected') {
@@ -431,25 +437,33 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
     )
     bridgeRef.current = bridge
 
-    // Resolve Clerk session token (null for guests) then connect.
-    ;(async () => {
-      let authToken: string | null = null
-      if (getAuthToken) {
-        try {
-          authToken = await getAuthToken()
-        } catch {
-          authToken = null
-        }
+    if (pending) {
+      // Client is already connected — sync React status without waiting for an event
+      if (client.status === 'connected') {
+        setStatus('connected')
+        setStatusText(matchId ? `Match: ${matchId.slice(-6)}` : 'Connected')
       }
-      if (cancelled) return
-      client.connect(effectiveWsUrl, {
-        token: matchToken,
-        matchId,
-        playerId,
-        mode,
-        ...(authToken ? { authToken } : {}),
-      })
-    })()
+    } else {
+      // Resolve Clerk session token (null for guests) then connect.
+      ;(async () => {
+        let authToken: string | null = null
+        if (getAuthToken) {
+          try {
+            authToken = await getAuthToken()
+          } catch {
+            authToken = null
+          }
+        }
+        if (cancelled) return
+        client.connect(effectiveWsUrl, {
+          token: matchToken,
+          matchId,
+          playerId,
+          mode,
+          ...(authToken ? { authToken } : {}),
+        })
+      })()
+    }
 
     return () => {
       cancelled = true
