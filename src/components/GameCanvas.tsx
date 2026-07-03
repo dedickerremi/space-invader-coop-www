@@ -116,7 +116,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
   // removed when server confirms or after timeout.
   type PhantomBullet = Bullet & { createdAt: number }
   const phantomBulletsRef = useRef<PhantomBullet[]>([])
-  const prevLocalBulletCountRef = useRef(0)
+  const prevLocalBulletsRef = useRef<{ x: number; y: number }[]>([])
 
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error' | 'ended'>('connecting')
   const [statusText, setStatusText] = useState('Connecting...')
@@ -268,16 +268,24 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
         b => now - b.createdAt < MAX_PHANTOM_MS,
       )
 
-      // When server confirms new bullets from local player, remove oldest phantoms
-      const localServerBullets = state.bullets.filter(b => b.ownerId === client.playerId).length
-      const delta = localServerBullets - prevLocalBulletCountRef.current
-      if (delta > 0) {
-        phantomBulletsRef.current.splice(0, delta)
+      // Newly spawned local bullets: any current bullet not explained by advancing
+      // a previous-frame bullet upward (bullets keep constant x and move -bulletSpeed
+      // per tick; allow up to 3 ticks in case a state frame was missed). Immune to
+      // same-tick despawns, unlike a count delta.
+      const bSpeed = getGameMeta().bulletSpeed
+      const currLocal = state.bullets.filter(b => b.ownerId === client.playerId)
+      const prevLocal = prevLocalBulletsRef.current
+      const spawned = currLocal.filter(
+        b => !prevLocal.some(
+          p => Math.abs(p.x - b.x) < 0.5 && p.y - b.y >= 0 && p.y - b.y <= bSpeed * 3,
+        ),
+      ).length
+      if (spawned > 0) {
+        phantomBulletsRef.current.splice(0, spawned)
       }
-      prevLocalBulletCountRef.current = localServerBullets
+      prevLocalBulletsRef.current = currLocal.map(b => ({ x: b.x, y: b.y }))
 
       // Move remaining phantoms up at server bullet speed
-      const bSpeed = getGameMeta().bulletSpeed
       phantomBulletsRef.current = phantomBulletsRef.current
         .map(b => ({ ...b, y: b.y - bSpeed }))
         .filter(b => b.y > 0)
