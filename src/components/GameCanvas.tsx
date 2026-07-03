@@ -168,6 +168,12 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
   // --- Refs for bridge / renderer ---
   const isPausedRef = useRef(false)
   const pausedByMeRef = useRef(false)
+  // The menu opens/closes optimistically on Escape, but STATE broadcasts sent
+  // before the server processed our PAUSE/RESUME still carry the old paused
+  // value and would instantly undo it. Remember when we asked, and ignore
+  // contradicting states within a grace window.
+  const pauseRequestedAtRef = useRef(0)
+  const resumeRequestedAtRef = useRef(0)
 
   // Keep refs in sync
   useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
@@ -180,9 +186,13 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
 
     if (isPausedRef.current && pausedByMeRef.current) {
       client.send({ type: 'RESUME' })
+      pauseRequestedAtRef.current = 0
+      resumeRequestedAtRef.current = performance.now()
       setShowPauseMenu(false)
     } else if (!isPausedRef.current) {
       client.send({ type: 'PAUSE' })
+      resumeRequestedAtRef.current = 0
+      pauseRequestedAtRef.current = performance.now()
       setShowPauseMenu(true)
     }
   }, [])
@@ -251,8 +261,20 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
 
       setIsPaused(paused)
       setPausedByMe(byMe)
-      if (paused && byMe) setShowPauseMenu(true)
-      if (!paused) setShowPauseMenu(false)
+      const PENDING_GRACE_MS = 1000
+      const stateAt = performance.now()
+      if (paused && byMe) {
+        pauseRequestedAtRef.current = 0
+        const resumePending =
+          resumeRequestedAtRef.current > 0 && stateAt - resumeRequestedAtRef.current < PENDING_GRACE_MS
+        if (!resumePending) setShowPauseMenu(true)
+      }
+      if (!paused) {
+        resumeRequestedAtRef.current = 0
+        const pausePending =
+          pauseRequestedAtRef.current > 0 && stateAt - pauseRequestedAtRef.current < PENDING_GRACE_MS
+        if (!pausePending) setShowPauseMenu(false)
+      }
 
       // Client-side prediction: bridge.tick(serverX) → predicted X for local player
       const localPlayer = state.players.find((p) => p.id === client.playerId)

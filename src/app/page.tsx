@@ -55,10 +55,18 @@ export default function Home() {
   const cancelQueue = useCallback(() => {
     const client = queueClientRef.current
     if (client) {
+      queueClientRef.current = null // release before disconnect so connectionChange is ignored
       client.disconnect()
-      queueClientRef.current = null
     }
     setStatus('idle')
+  }, [])
+
+  // Disconnect a still-queued client if the user navigates away
+  useEffect(() => {
+    return () => {
+      queueClientRef.current?.disconnect()
+      queueClientRef.current = null
+    }
   }, [])
 
   const joinQueueViaWs = useCallback(async () => {
@@ -108,10 +116,16 @@ export default function Home() {
       })
 
       client.on('connectionChange', (connStatus) => {
-        if (connStatus === 'error') {
-          setStatus('error')
-          setError('Cannot connect to game server')
+        // Ignore events from a client we already released (cancel, timeout, navigation)
+        if (queueClientRef.current !== client) return
+        if (connStatus === 'error' || connStatus === 'disconnected') {
           queueClientRef.current = null
+          setStatus('error')
+          setError(
+            connStatus === 'error'
+              ? 'Cannot connect to game server'
+              : 'Connection to game server lost',
+          )
         }
       })
 
@@ -131,8 +145,8 @@ export default function Home() {
       })
 
       client.on('queueTimeout', () => {
+        queueClientRef.current = null // release before disconnect so connectionChange is ignored
         client.disconnect()
-        queueClientRef.current = null
         setStatus('timeout')
       })
 
