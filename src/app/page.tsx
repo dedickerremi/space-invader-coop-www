@@ -25,6 +25,18 @@ export default function Home() {
     setUserId(MatchmakingClient.generateUserId())
   }, [])
 
+  // The Fly backend auto-stops when idle. Ping it as soon as the menu loads
+  // so the machine is awake by the time the player picks a mode, instead of
+  // paying the cold start on the WebSocket connect.
+  useEffect(() => {
+    // Same fallback as lib/matchmaking.ts
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001'
+    const httpUrl = wsUrl.replace(/^ws/, 'http')
+    fetch(`${httpUrl}/api/version`, { cache: 'no-store' }).catch(() => {
+      // Fire-and-forget: waking the machine is all that matters
+    })
+  }, [])
+
   // Fetch online player count on mount and every 30s
   useEffect(() => {
     const fetchOnline = async () => {
@@ -55,10 +67,18 @@ export default function Home() {
   const cancelQueue = useCallback(() => {
     const client = queueClientRef.current
     if (client) {
+      queueClientRef.current = null // release before disconnect so connectionChange is ignored
       client.disconnect()
-      queueClientRef.current = null
     }
     setStatus('idle')
+  }, [])
+
+  // Disconnect a still-queued client if the user navigates away
+  useEffect(() => {
+    return () => {
+      queueClientRef.current?.disconnect()
+      queueClientRef.current = null
+    }
   }, [])
 
   const joinQueueViaWs = useCallback(async () => {
@@ -108,10 +128,16 @@ export default function Home() {
       })
 
       client.on('connectionChange', (connStatus) => {
-        if (connStatus === 'error') {
-          setStatus('error')
-          setError('Cannot connect to game server')
+        // Ignore events from a client we already released (cancel, timeout, navigation)
+        if (queueClientRef.current !== client) return
+        if (connStatus === 'error' || connStatus === 'disconnected') {
           queueClientRef.current = null
+          setStatus('error')
+          setError(
+            connStatus === 'error'
+              ? 'Cannot connect to game server'
+              : 'Connection to game server lost',
+          )
         }
       })
 
@@ -131,8 +157,8 @@ export default function Home() {
       })
 
       client.on('queueTimeout', () => {
+        queueClientRef.current = null // release before disconnect so connectionChange is ignored
         client.disconnect()
-        queueClientRef.current = null
         setStatus('timeout')
       })
 
