@@ -82,20 +82,30 @@ export class MatchmakingClient {
   }
 
   /**
-   * Generate a unique user ID.
-   * Uses sessionStorage when available (so each tab gets a unique ID).
+   * Get the matchmaking ID for this tab.
+   *
+   * Deliberately NOT persisted in web storage: localStorage is shared by every
+   * tab of a browser, and sessionStorage is *copied* into a duplicated tab —
+   * either one lets two tabs send the same ID, and the queue then pairs the
+   * player with themselves. Module scope gives one ID per JS context, i.e. one
+   * per tab, so two tabs / two windows / two browsers on the same machine get
+   * distinct IDs and can co-op with each other.
+   *
+   * A reload mints a new ID. That is fine: an in-progress match reconnects with
+   * the playerId stored in `matchData`, not with this one.
    */
   static generateUserId(): string {
-    if (typeof sessionStorage !== 'undefined') {
-      const stored = sessionStorage.getItem('userId')
-      if (stored) return stored
-
-      const id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      sessionStorage.setItem('userId', id)
-      return id
-    }
-
-    // Fallback for environments without sessionStorage (e.g. React Native)
-    return `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    if (!tabUserId) tabUserId = `user-${randomSuffix()}`
+    return tabUserId
   }
+}
+
+// Per-tab, per-page-load matchmaking ID. See generateUserId above.
+let tabUserId: string | null = null
+
+function randomSuffix(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
