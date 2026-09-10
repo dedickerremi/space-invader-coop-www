@@ -172,10 +172,10 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'er
 export type GameMode = 'solo' | 'coop'
 
 export type ConnectionParams = {
+  /** Session token from /api/session. Carries the identity; the server
+   *  derives playerId, matchId and mode from it rather than trusting the
+   *  client, so none of those are sent. */
   token: string
-  matchId: string
-  playerId: string
-  mode: GameMode
   /** Clerk session JWT. Optional — omit for guests. */
   authToken?: string
 }
@@ -183,15 +183,16 @@ export type ConnectionParams = {
 // === MATCHMAKING ===
 
 export type MatchData = {
-  matchId: string
-  matchToken: string
+  token: string
   wsUrl: string
+  /** Assigned by the server, echoed back in WELCOME. */
   playerId: string
+  /** Present for solo immediately; for coop only once the matchmaker pairs. */
+  matchId?: string
   mode: GameMode
 }
 
-export type QueueResult =
-  | { status: 'queued'; queueToken: string; wsUrl: string }
-  | { status: 'matched'; matchId: string; matchToken: string; wsUrl: string; playerId: string; mode: GameMode }
+export type SessionResult =
+  | { status: 'ok'; token: string; playerId: string; matchId?: string; wsUrl: string; mode: GameMode }
   | { status: 'error'; error: string }
 

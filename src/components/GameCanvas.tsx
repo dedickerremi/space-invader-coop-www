@@ -73,7 +73,7 @@ type HudState = {
 }
 
 type GameCanvasProps = {
-  matchToken?: string
+  token?: string
   wsUrl?: string
   matchId?: string
   playerId?: string
@@ -95,7 +95,7 @@ const VIBRATE_MS = 50
 
 // --- Component ---
 
-export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop', getAuthToken }: GameCanvasProps) {
+export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', getAuthToken }: GameCanvasProps) {
   const router = useRouter()
   const gameViewContainerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
@@ -206,7 +206,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
 
   // --- Initialize GameClient (fetch game meta first so renderer has backend dimensions) ---
   useEffect(() => {
-    if (!matchToken || !matchId || !playerId) {
+    if (!token || !playerId) {
       setStatus('error')
       setStatusText('Missing match data - please join a match')
       return
@@ -486,10 +486,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
         }
         if (cancelled) return
         client.connect(effectiveWsUrl, {
-          token: matchToken,
-          matchId,
-          playerId,
-          mode,
+          token,
           ...(authToken ? { authToken } : {}),
         })
       })()
@@ -506,7 +503,7 @@ export function GameCanvas({ matchToken, wsUrl, matchId, playerId, mode = 'coop'
         bannerTimerRef.current = null
       }
     }
-  }, [matchToken, matchId, playerId, wsUrl, mode, router, togglePause, getAuthToken])
+  }, [token, matchId, playerId, wsUrl, mode, router, togglePause, getAuthToken])
 
   // Mobile: pick viewport height so the canvas aspect ratio matches the screen
   // aspect ratio — the canvas then fills the screen without letterboxing. If the
