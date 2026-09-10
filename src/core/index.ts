@@ -66,7 +66,6 @@ export type {
   GameMode,
   MatchData,
   QueueResult,
-  MatchPollResult,
 } from './types'
 
 // Sprites

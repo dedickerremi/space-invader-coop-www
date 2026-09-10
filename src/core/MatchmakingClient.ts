@@ -3,7 +3,7 @@
 // Framework-agnostic: pure TypeScript, uses fetch API only
 // ============================================================
 
-import type { QueueResult, MatchPollResult, GameMode } from './types'
+import type { QueueResult, GameMode } from './types'
 
 export class MatchmakingClient {
   private baseUrl: string
@@ -46,39 +46,6 @@ export class MatchmakingClient {
     }
 
     return { status: 'error', error: data.error || 'Unknown error' }
-  }
-
-  /**
-   * Leave the matchmaking queue.
-   */
-  async leaveQueue(userId: string): Promise<void> {
-    await fetch(`${this.baseUrl}/api/queue/leave`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
-    })
-  }
-
-  /**
-   * Poll for a match assignment.
-   * Returns 'ready' when a match has been created, 'waiting' otherwise.
-   */
-  async pollMatch(userId: string): Promise<MatchPollResult> {
-    const res = await fetch(`${this.baseUrl}/api/match/current?userId=${userId}`)
-    const data = await res.json()
-
-    if (data.status === 'ready') {
-      return {
-        status: 'ready',
-        matchId: data.matchId,
-        matchToken: data.matchToken,
-        wsUrl: data.wsUrl,
-        playerId: data.playerId,
-        mode: data.mode ?? 'coop',
-      }
-    }
-
-    return { status: 'waiting' }
   }
 
   /**

@@ -72,8 +72,6 @@ export function createMatch(player1Id: string, player2Id: string): Match | null 
   tokenToMatch.set(token1, { matchId, playerId: player1Id })
   tokenToMatch.set(token2, { matchId, playerId: player2Id })
 
-  console.log(`[MATCHMAKING] Created ${matchId} for ${player1Id} and ${player2Id}`)
-
   return match
 }
 
@@ -100,8 +98,6 @@ export function createSoloMatch(playerId: string): Match | null {
 
   matches.set(matchId, match)
   tokenToMatch.set(token, { matchId, playerId })
-
-  console.log(`[MATCHMAKING] Created solo ${matchId} for ${playerId}`)
 
   return match
 }
