@@ -195,6 +195,3 @@ export type QueueResult =
   | { status: 'matched'; matchId: string; matchToken: string; wsUrl: string; playerId: string; mode: GameMode }
   | { status: 'error'; error: string }
 
-export type MatchPollResult =
-  | { status: 'waiting' }
-  | { status: 'ready'; matchId: string; matchToken: string; wsUrl: string; playerId: string; mode: GameMode }
