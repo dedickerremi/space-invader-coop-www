@@ -3,7 +3,7 @@
 // Framework-agnostic: pure TypeScript, uses fetch API only
 // ============================================================
 
-import type { QueueResult, GameMode } from './types'
+import type { SessionResult, GameMode } from './types'
 
 export class MatchmakingClient {
   private baseUrl: string
@@ -18,51 +18,39 @@ export class MatchmakingClient {
   }
 
   /**
-   * Join the matchmaking queue.
-   * Returns 'queued' if waiting, 'matched' if a match was found immediately.
+   * Ask the server for a session.
+   *
+   * The server assigns the player id — the client no longer invents one. That
+   * is what makes two tabs, two windows or two browsers on one machine
+   * distinct players who can co-op with each other, and it is why the socket
+   * can trust who is connecting.
+   *
+   * A solo session comes back with a match id already assigned. A coop one
+   * does not: the matchmaker hands it one when it finds an opponent.
    */
-  async joinQueue(userId: string, mode: GameMode = 'coop'): Promise<QueueResult> {
-    const res = await fetch(`${this.baseUrl}/api/queue/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, mode }),
-    })
+  async createSession(mode: GameMode = 'coop'): Promise<SessionResult> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      })
+      const data = await res.json()
 
-    const data = await res.json()
+      if (!res.ok || data.status !== 'ok') {
+        return { status: 'error', error: data.error || 'Could not reach the game server' }
+      }
 
-    if (data.status === 'matched') {
       return {
-        status: 'matched',
-        matchId: data.matchId,
-        matchToken: data.matchToken,
-        wsUrl: data.wsUrl,
+        status: 'ok',
+        token: data.token,
         playerId: data.playerId,
+        matchId: data.matchId,
+        wsUrl: data.wsUrl,
         mode: data.mode ?? mode,
       }
+    } catch {
+      return { status: 'error', error: 'Could not reach the game server' }
     }
-
-    if (data.status === 'queued') {
-      return { status: 'queued', queueToken: data.queueToken, wsUrl: data.wsUrl }
-    }
-
-    return { status: 'error', error: data.error || 'Unknown error' }
-  }
-
-  /**
-   * Generate a unique user ID.
-   * Uses sessionStorage when available (so each tab gets a unique ID).
-   */
-  static generateUserId(): string {
-    if (typeof sessionStorage !== 'undefined') {
-      const stored = sessionStorage.getItem('userId')
-      if (stored) return stored
-
-      const id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      sessionStorage.setItem('userId', id)
-      return id
-    }
-
-    // Fallback for environments without sessionStorage (e.g. React Native)
-    return `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   }
 }
