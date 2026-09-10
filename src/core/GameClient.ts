@@ -63,7 +63,9 @@ export class GameClient {
   /**
    * Connect to the game server via WebSocket.
    * @param wsUrl  Base WebSocket URL (e.g. "wss://server.example.com")
-   * @param params Connection params: token, matchId, playerId
+   * @param params Connection params: the session token, plus an optional
+   *               Clerk JWT. Identity is not sent — the server reads it from
+   *               the session the token names.
    */
   connect(wsUrl: string, params: ConnectionParams): void {
     // Close any existing connection
@@ -71,12 +73,7 @@ export class GameClient {
 
     this.setStatus('connecting')
 
-    const qs = new URLSearchParams({
-      token: params.token,
-      matchId: params.matchId,
-      playerId: params.playerId,
-      mode: params.mode,
-    })
+    const qs = new URLSearchParams({ token: params.token })
     if (params.authToken) {
       qs.set('authToken', params.authToken)
     }

@@ -65,7 +65,7 @@ export type {
   // Matchmaking
   GameMode,
   MatchData,
-  QueueResult,
+  SessionResult,
 } from './types'
 
 // Sprites

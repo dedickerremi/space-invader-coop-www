@@ -6,8 +6,8 @@ import { useAuth } from '@clerk/nextjs'
 import { GameCanvas } from '@/components/GameCanvas'
 
 type MatchData = {
-  matchId: string
-  matchToken: string
+  matchId?: string
+  token: string
   wsUrl: string
   playerId: string
   mode?: 'solo' | 'coop'
@@ -53,7 +53,7 @@ export default function PlayPage() {
     <ClerkAuthedGame matchData={matchData} />
   ) : (
     <GameCanvas
-      matchToken={matchData.matchToken}
+      token={matchData.token}
       wsUrl={matchData.wsUrl}
       matchId={matchData.matchId}
       playerId={matchData.playerId}
@@ -68,7 +68,7 @@ function ClerkAuthedGame({ matchData }: { matchData: MatchData }) {
 
   return (
     <GameCanvas
-      matchToken={matchData.matchToken}
+      token={matchData.token}
       wsUrl={matchData.wsUrl}
       matchId={matchData.matchId}
       playerId={matchData.playerId}

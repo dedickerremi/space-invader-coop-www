@@ -14,16 +14,10 @@ export default function Home() {
   const router = useRouter()
   const matchmakingRef = useRef(new MatchmakingClient())
   const queueClientRef = useRef<GameClient | null>(null)
-  const [userId, setUserId] = useState<string | null>(null)
   const [status, setStatus] = useState<MatchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [matchData, setMatchData] = useState<MatchData | null>(null)
   const [onlinePlayers, setOnlinePlayers] = useState<number | null>(null)
-
-  // Generate userId on mount
-  useEffect(() => {
-    setUserId(MatchmakingClient.generateUserId())
-  }, [])
 
   // The Fly backend auto-stops when idle. Ping it as soon as the menu loads
   // so the machine is awake by the time the player picks a mode, instead of
@@ -82,39 +76,18 @@ export default function Home() {
   }, [])
 
   const joinQueueViaWs = useCallback(async () => {
-    if (!userId) return
-
     setStatus('joining')
     setError(null)
 
     try {
-      const res = await fetch('/api/queue/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, mode: 'coop' }),
-      })
-      const result = await res.json()
-
-      if (result.status === 'matched') {
-        // Rare: matched immediately (was already 2 in queue)
-        setMatchData({
-          matchId: result.matchId,
-          matchToken: result.matchToken,
-          wsUrl: result.wsUrl,
-          playerId: result.playerId,
-          mode: result.mode,
-        })
-        setStatus('ready')
-        return
-      }
-
-      if (result.status !== 'queued') {
+      const session = await matchmakingRef.current.createSession('coop')
+      if (session.status !== 'ok') {
         setStatus('error')
-        setError(result.error ?? 'Failed to join queue')
+        setError(session.error)
         return
       }
 
-      const { queueToken, wsUrl } = result
+      const { token, wsUrl } = session
 
       const client = new GameClient()
       queueClientRef.current = client
@@ -143,10 +116,10 @@ export default function Home() {
 
       client.on('welcome', (playerId, matchId) => {
         const data: MatchData = {
-          matchId,
-          matchToken: queueToken,
+          token,
           wsUrl,
           playerId,
+          matchId,
           mode: 'coop',
         }
         sessionStorage.setItem('matchData', JSON.stringify(data))
@@ -162,47 +135,40 @@ export default function Home() {
         setStatus('timeout')
       })
 
-      client.connect(wsUrl, {
-        token: queueToken,
-        matchId: 'queue',
-        playerId: userId,
-        mode: 'coop',
-      })
+      client.connect(wsUrl, { token })
     } catch (err) {
       setStatus('error')
       setError('Failed to join queue')
       console.error(err)
     }
-  }, [userId, router])
+  }, [router])
 
   const joinQueue = useCallback(async (mode: GameMode = 'solo') => {
-    if (!userId) return
-
     setStatus('joining')
     setError(null)
 
     try {
-      const result = await matchmakingRef.current.joinQueue(userId, mode)
+      const session = await matchmakingRef.current.createSession(mode)
 
-      if (result.status === 'matched') {
+      if (session.status === 'ok') {
         setMatchData({
-          matchId: result.matchId,
-          matchToken: result.matchToken,
-          wsUrl: result.wsUrl,
-          playerId: result.playerId,
-          mode: result.mode,
+          token: session.token,
+          wsUrl: session.wsUrl,
+          playerId: session.playerId,
+          matchId: session.matchId,
+          mode: session.mode,
         })
         setStatus('ready')
       } else {
         setStatus('error')
-        setError('error' in result ? result.error : 'Failed to join queue')
+        setError(session.error)
       }
     } catch (err) {
       setStatus('error')
-      setError('Failed to join queue')
+      setError('Failed to start the game')
       console.error(err)
     }
-  }, [userId])
+  }, [])
 
   return (
     <div style={containerStyle}>
@@ -277,9 +243,6 @@ export default function Home() {
         </>
       )}
 
-      {userId && (
-        <div style={userIdStyle}>ID: {userId.slice(-8)}</div>
-      )}
     </div>
   )
 }
@@ -360,9 +323,3 @@ const onlinePlayersStyle: React.CSSProperties = {
   fontSize: '0.8rem',
 }
 
-const userIdStyle: React.CSSProperties = {
-  position: 'absolute',
-  bottom: '1rem',
-  color: '#333',
-  fontSize: '0.75rem',
-}
