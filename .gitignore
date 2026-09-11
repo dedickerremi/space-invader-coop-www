@@ -13,12 +13,11 @@ version-history.json
 # Logs
 *.log
 
-# Environment
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Environment — every env file except the documented template. The old list
+# named five variants and missed .env.production and .env.development, which
+# Next also loads.
+.env*
+!.env.example
 
 # IDE
 .idea/
