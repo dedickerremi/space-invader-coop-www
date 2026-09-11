@@ -3,7 +3,8 @@
 // Framework-agnostic: pure TypeScript, uses Canvas API only
 // ============================================================
 
-import type { Boss, GameState } from "./types"
+import type { Boss, Carrier, GameState } from "./types"
+import { hasDoubleShot, hasSpeedBoost, secondsLeft, shieldCharges } from "./buffs"
 import { getGameMeta } from "./gameMeta"
 import { createSpriteSheet, generateStars, generateNebula } from "./Sprites"
 import type { SpriteSheet, Star } from "./Sprites"
@@ -79,6 +80,26 @@ type Meteor = {
   /** Total lifetime in ms */
   ttl: number
 }
+
+// --- Bonus carriers ---
+
+/** Colour and glyph per bonus, shared by falling bonuses and carriers. */
+const POWER_UP_STYLE: Record<string, { color: string; glyph: string }> = {
+  extra_life: { color: "#ff5577", glyph: "♥" },
+  double_shot: { color: "#ffdd00", glyph: "⫶" },
+  speed_boost: { color: "#33aaff", glyph: "⚡" },
+  shield: { color: "#00ddff", glyph: "◉" },
+  points_bonus: { color: "#ffcc00", glyph: "$" },
+}
+
+// Carrier sizes and toughness mirror the server's hitboxes (carriers.go).
+const ASTEROID_RADIUS = 18
+const ASTEROID_MAX_HP = 3
+const COURIER_WIDTH = 44
+const COURIER_HEIGHT = 24
+const COURIER_MAX_HP = 2
+/** Radius multipliers giving every asteroid the same lumpy outline. */
+const ASTEROID_LUMPS = [1, 0.82, 0.96, 0.78, 1.05, 0.86, 0.98, 0.8, 0.93]
 
 // --- GameRenderer class ---
 
@@ -246,6 +267,7 @@ export class GameRenderer {
     this.renderPlayers(state)
     this.renderBullets(state)
     this.renderEnemies(state)
+    this.renderCarriers(state)
     if (state.boss) this.renderBoss(state.boss)
     this.renderPowerUps(state)
     this.renderEnemyBullets(state)
@@ -552,7 +574,7 @@ export class GameRenderer {
       ctx.globalAlpha = 1.0
 
       // Speed boost: motion trail behind ship
-      if ((player.speedBoostTimer ?? 0) > 0) {
+      if (hasSpeedBoost(player)) {
         const trailAlpha = 0.4 + 0.2 * Math.sin(now / 80)
         ctx.globalAlpha = trailAlpha
         ctx.fillStyle = "#ffdd00"
@@ -569,7 +591,7 @@ export class GameRenderer {
       }
 
       // Double-shot: yellow tint outline
-      if ((player.doubleShotTimer ?? 0) > 0) {
+      if (hasDoubleShot(player)) {
         ctx.strokeStyle = "#ffdd00"
         ctx.lineWidth = 2
         ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now / 120)
@@ -582,18 +604,19 @@ export class GameRenderer {
         ctx.globalAlpha = 1.0
       }
 
-      // Shield: cyan ring around ship
-      if ((player.shieldTimer ?? 0) > 0) {
+      // Shield: cyan ring around ship, thicker for each hit it can still
+      // absorb, flickering on its last one.
+      const charges = shieldCharges(player)
+      if (charges > 0) {
         const cx = player.x
         const cy = playerY
         const r = Math.max(m.playerWidth, m.playerHeight) * 0.85
-        // Pulse stronger when shield is about to expire (< 30 ticks = 1s)
-        const lowTime = player.shieldTimer < 30
-        const pulse = lowTime
+        const lastCharge = charges === 1
+        const pulse = lastCharge
           ? 0.5 + 0.5 * Math.sin(now / 60)
           : 0.7 + 0.3 * Math.sin(now / 200)
         ctx.strokeStyle = "#00ddff"
-        ctx.lineWidth = 2
+        ctx.lineWidth = 1 + charges
         ctx.shadowColor = "#00ddff"
         ctx.shadowBlur = 12
         ctx.globalAlpha = pulse
@@ -610,13 +633,21 @@ export class GameRenderer {
       ctx.textAlign = "center"
       const label = player.displayName ?? (isMe ? "YOU" : `P${index + 1}`)
       let statusLine = `${label}  ${"♥".repeat(player.lives)}${"♡".repeat(Math.max(0, 3 - player.lives))}`
+      // Lasting bonuses show no countdown; the shield shows its hits left.
+      // Timed bonuses (older servers) keep their seconds.
       const buffs: string[] = []
-      if ((player.shieldTimer ?? 0) > 0)
-        buffs.push(`🛡${Math.ceil(player.shieldTimer / 30)}s`)
-      if ((player.doubleShotTimer ?? 0) > 0)
-        buffs.push(`🔱${Math.ceil(player.doubleShotTimer / 30)}s`)
-      if ((player.speedBoostTimer ?? 0) > 0)
-        buffs.push(`⚡${Math.ceil(player.speedBoostTimer / 30)}s`)
+      if (charges > 0) {
+        const secs = secondsLeft(player.shieldTimer, player.shieldCharges)
+        buffs.push(secs !== null ? `🛡${secs}s` : `🛡×${charges}`)
+      }
+      if (hasDoubleShot(player)) {
+        const secs = secondsLeft(player.doubleShotTimer, player.doubleShot)
+        buffs.push(secs !== null ? `🔱${secs}s` : "🔱")
+      }
+      if (hasSpeedBoost(player)) {
+        const secs = secondsLeft(player.speedBoostTimer, player.speedBoost)
+        buffs.push(secs !== null ? `⚡${secs}s` : "⚡")
+      }
       if (buffs.length > 0) statusLine += `  ${buffs.join(" ")}`
       ctx.fillText(statusLine, player.x, playerY + m.playerHeight / 2 + 14)
     })
@@ -801,6 +832,165 @@ export class GameRenderer {
     ctx.imageSmoothingEnabled = true
   }
 
+  /**
+   * Bonus carriers: asteroids tumble across with their bonus glowing inside;
+   * the goblin's courier crosses the top towing its bonus. Pips underneath
+   * show how many hits are left.
+   */
+  private renderCarriers(state: GameState): void {
+    const carriers = state.carriers ?? []
+    if (carriers.length === 0) return
+    const now = performance.now()
+    for (const c of carriers) {
+      if (c.kind === "courier") this.drawCourier(c, now)
+      else this.drawAsteroid(c)
+      this.drawCarriedBonus(c, now)
+      this.drawCarrierPips(c)
+    }
+  }
+
+  private drawAsteroid(c: Carrier): void {
+    const ctx = this.ctx
+    ctx.save()
+    ctx.translate(c.x, c.y)
+    // Tumble with distance travelled, so it rolls rather than spins in place.
+    ctx.rotate((c.x + c.y) / 40)
+    ctx.beginPath()
+    ASTEROID_LUMPS.forEach((k, i) => {
+      const a = (i / ASTEROID_LUMPS.length) * Math.PI * 2
+      const px = Math.cos(a) * ASTEROID_RADIUS * k
+      const py = Math.sin(a) * ASTEROID_RADIUS * k
+      if (i === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    })
+    ctx.closePath()
+    ctx.fillStyle = "#5b4a3d"
+    ctx.fill()
+    ctx.strokeStyle = "#a38a70"
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.fillStyle = "rgba(0, 0, 0, 0.28)"
+    for (const [x, y, r] of [
+      [-7, -5, 4],
+      [6, 6, 3],
+      [8, -7, 2.5],
+    ]) {
+      ctx.beginPath()
+      ctx.arc(x, y, r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore()
+  }
+
+  private drawCourier(c: Carrier, now: number): void {
+    const ctx = this.ctx
+    const w = COURIER_WIDTH
+    const h = COURIER_HEIGHT
+    ctx.save()
+    ctx.translate(c.x, c.y)
+
+    // Saucer hull with blinking rim lights.
+    ctx.fillStyle = "#3d7a5a"
+    ctx.strokeStyle = "#9fe0b8"
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.ellipse(0, 4, w / 2, h / 3, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+    const blink = Math.floor(now / 150)
+    for (let i = -2; i <= 2; i++) {
+      ctx.fillStyle = (blink + i) % 2 === 0 ? "#ffe066" : "#6b5a2a"
+      ctx.beginPath()
+      ctx.arc(i * 8, 6, 1.6, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // The goblin: green head, pointy ears, grin.
+    ctx.fillStyle = "#7ccf5a"
+    ctx.beginPath()
+    ctx.arc(0, -3, 5, 0, Math.PI * 2)
+    ctx.fill()
+    for (const side of [-1, 1]) {
+      ctx.beginPath()
+      ctx.moveTo(side * 4, -5)
+      ctx.lineTo(side * 11, -9)
+      ctx.lineTo(side * 4, -1)
+      ctx.closePath()
+      ctx.fill()
+    }
+    ctx.fillStyle = "#1a1a1a"
+    ctx.beginPath()
+    ctx.arc(-2, -4, 1, 0, Math.PI * 2)
+    ctx.arc(2, -4, 1, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = "#1a1a1a"
+    ctx.lineWidth = 0.8
+    ctx.beginPath()
+    ctx.arc(0, -2.5, 2.2, 0.2 * Math.PI, 0.8 * Math.PI)
+    ctx.stroke()
+
+    // Glass dome over the pilot.
+    ctx.fillStyle = "rgba(170, 230, 255, 0.28)"
+    ctx.strokeStyle = "rgba(200, 240, 255, 0.7)"
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.arc(0, 1, 10, Math.PI, 0)
+    ctx.fill()
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  /** The bonus a carrier releases: inside an asteroid, towed under a courier. */
+  private drawCarriedBonus(c: Carrier, now: number): void {
+    const ctx = this.ctx
+    const style = POWER_UP_STYLE[c.drop] ?? { color: "#ffffff", glyph: "?" }
+    const towed = c.kind === "courier"
+    const bx = c.x
+    const by = towed ? c.y + 22 + Math.sin(now / 180) * 1.5 : c.y
+
+    if (towed) {
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)"
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(c.x, c.y + COURIER_HEIGHT / 3)
+      ctx.lineTo(bx, by - 8)
+      ctx.stroke()
+    }
+
+    // Smaller inside an asteroid, so it still reads as a rock.
+    const radius = towed ? 8 : 6
+    ctx.save()
+    ctx.shadowColor = style.color
+    ctx.shadowBlur = 10
+    ctx.fillStyle = "rgba(10, 10, 15, 0.85)"
+    ctx.beginPath()
+    ctx.arc(bx, by, radius, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = style.color
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.shadowBlur = 0
+    ctx.fillStyle = style.color
+    ctx.font = `bold ${towed ? 11 : 8}px JetBrains Mono, monospace`
+    ctx.textAlign = "center"
+    ctx.textBaseline = "middle"
+    ctx.fillText(style.glyph, bx, by + 1)
+    ctx.textBaseline = "alphabetic"
+    ctx.restore()
+  }
+
+  private drawCarrierPips(c: Carrier): void {
+    const ctx = this.ctx
+    const max = c.kind === "courier" ? COURIER_MAX_HP : ASTEROID_MAX_HP
+    const y = c.y + (c.kind === "courier" ? 36 : ASTEROID_RADIUS + 8)
+    for (let i = 0; i < max; i++) {
+      ctx.fillStyle = i < c.hp ? "#ffffff" : "rgba(255, 255, 255, 0.2)"
+      ctx.beginPath()
+      ctx.arc(c.x + (i - (max - 1) / 2) * 6, y, 1.6, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
   private renderPowerUps(state: GameState): void {
     const ctx = this.ctx
     const m = getGameMeta()
@@ -811,13 +1001,7 @@ export class GameRenderer {
     const bob = Math.sin(elapsed / 200) * 2
     const half = m.powerUpSize / 2
 
-    const STYLE: Record<string, { color: string; glyph: string }> = {
-      extra_life: { color: "#ff5577", glyph: "♥" },
-      double_shot: { color: "#ffdd00", glyph: "⫶" },
-      speed_boost: { color: "#33aaff", glyph: "⚡" },
-      shield: { color: "#00ddff", glyph: "◉" },
-      points_bonus: { color: "#ffcc00", glyph: "$" },
-    }
+    const STYLE = POWER_UP_STYLE
 
     // SVG sprites the handoff delivered (only 2 of 5 kinds).
     const svgKindToSprite: Partial<Record<string, HTMLCanvasElement>> = this

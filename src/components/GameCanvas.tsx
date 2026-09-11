@@ -63,6 +63,7 @@ type HudState = {
   players: PlayerHud[]
   waveNumber: number
   levelName: string
+  levelTitle: string
   waveName: string
   totalWaves: number
   victory: boolean
@@ -132,6 +133,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
     players: [],
     waveNumber: 0,
     levelName: '',
+    levelTitle: '',
     waveName: '',
     totalWaves: 0,
     victory: false,
@@ -359,6 +361,9 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
       const lives = state.lives ?? 0
       const waveNumber = state.waveNumber ?? 0
       const levelName = state.levelName ?? ''
+      // levelName is the storage key ("solo-level2.json"); levelTitle is what
+      // players should read ("Sector 2 — Flank Run"). Older servers send no title.
+      const levelTitle = state.levelTitle ?? ''
       const waveName = state.waveName ?? ''
       const totalWaves = state.totalWaves ?? 0
       const victory = state.victory ?? false
@@ -383,6 +388,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
           prev.lives === lives &&
           prev.waveNumber === waveNumber &&
           prev.levelName === levelName &&
+          prev.levelTitle === levelTitle &&
           prev.waveName === waveName &&
           prev.totalWaves === totalWaves &&
           prev.victory === victory &&
@@ -405,7 +411,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
           bannerTimerRef.current = setTimeout(() => setWaveBanner(null), 2200)
         } else if (!gameOver && !bossKind && (levelChanged || waveChanged)) {
           const text = levelChanged
-            ? `Level — ${levelName}`
+            ? levelTitle || `Level — ${levelName}`
             : `Wave ${waveNumber}${totalWaves ? `/${totalWaves}` : ''} — ${waveName}`
           setWaveBanner(text)
           if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current)
@@ -418,6 +424,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
           players,
           waveNumber,
           levelName,
+          levelTitle,
           waveName,
           totalWaves,
           victory,
@@ -589,6 +596,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
     players: hudPlayers,
     waveNumber,
     levelName,
+    levelTitle,
     waveName,
     totalWaves,
     victory,
@@ -596,9 +604,10 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
     gameOverSummary,
   } = hud
 
+  const levelDisplay = levelTitle || levelName
   const levelLabel =
-    levelName && waveNumber
-      ? `${levelName} · Wave ${waveNumber}${totalWaves ? `/${totalWaves}` : ''}${waveName ? ` — ${waveName}` : ''}`
+    levelDisplay && waveNumber
+      ? `${levelDisplay} · Wave ${waveNumber}${totalWaves ? `/${totalWaves}` : ''}${waveName ? ` — ${waveName}` : ''}`
       : waveNumber
         ? `Wave ${waveNumber}${totalWaves ? `/${totalWaves}` : ''}${waveName ? ` — ${waveName}` : ''}`
         : ''
@@ -781,7 +790,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
               </h2>
               <p style={{ color: victory ? '#ffd166' : '#888', marginBottom: '1rem' }}>
                 {victory
-                  ? `You cleared ${levelName || 'the campaign'}!`
+                  ? `You cleared ${levelDisplay || 'the campaign'}!`
                   : 'No lives left!'}
               </p>
               <div style={summaryTableStyle}>
