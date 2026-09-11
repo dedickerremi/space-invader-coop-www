@@ -43,7 +43,7 @@ jobs:
           NEW_VERSION=$(node -p "require('./package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           git add package.json
-          git diff --staged --quiet || git commit -m "chore(release): bump to v${NEW_VERSION} [${inputs.version_bump}]"
+          git diff --staged --quiet || git commit -m "chore(release): bump to v${NEW_VERSION} [${{ inputs.version_bump }}]"
           git push origin main
 
       - name: Merge main into production
