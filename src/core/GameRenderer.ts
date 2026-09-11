@@ -5,6 +5,7 @@
 
 import type { Boss, Carrier, GameState } from "./types"
 import { hasDoubleShot, hasSpeedBoost, secondsLeft, shieldCharges } from "./buffs"
+import { startingLives } from "./difficulty"
 import { getGameMeta } from "./gameMeta"
 import { createSpriteSheet, generateStars, generateNebula } from "./Sprites"
 import type { SpriteSheet, Star } from "./Sprites"
@@ -632,7 +633,9 @@ export class GameRenderer {
       ctx.font = "10px JetBrains Mono, monospace"
       ctx.textAlign = "center"
       const label = player.displayName ?? (isMe ? "YOU" : `P${index + 1}`)
-      let statusLine = `${label}  ${"♥".repeat(player.lives)}${"♡".repeat(Math.max(0, 3 - player.lives))}`
+      // Empty hearts count down from the lives this difficulty starts with.
+      const maxLives = startingLives(state.difficulty)
+      let statusLine = `${label}  ${"♥".repeat(player.lives)}${"♡".repeat(Math.max(0, maxLives - player.lives))}`
       // Lasting bonuses show no countdown; the shield shows its hits left.
       // Timed bonuses (older servers) keep their seconds.
       const buffs: string[] = []

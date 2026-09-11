@@ -66,6 +66,7 @@ export type {
   ConnectionParams,
   // Matchmaking
   GameMode,
+  Difficulty,
   MatchData,
   SessionResult,
 } from './types'

@@ -146,6 +146,8 @@ export type GameState = {
   levelName: string
   /** Display name ("Sector 2 — Flank Run"); levelName is the storage key. */
   levelTitle?: string
+  /** Absent on servers that predate difficulties. */
+  difficulty?: Difficulty
   waveName: string
   totalWaves: number
   victory?: boolean
@@ -196,6 +198,12 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'er
 
 export type GameMode = 'solo' | 'coop'
 
+/**
+ * Easy is each campaign as designed; Medium and Hard press harder on the same
+ * waves. Coop players are only paired with someone at the same difficulty.
+ */
+export type Difficulty = 'easy' | 'medium' | 'hard'
+
 export type ConnectionParams = {
   /** Session token from /api/session. Carries the identity; the server
    *  derives playerId, matchId and mode from it rather than trusting the
@@ -215,9 +223,10 @@ export type MatchData = {
   /** Present for solo immediately; for coop only once the matchmaker pairs. */
   matchId?: string
   mode: GameMode
+  difficulty?: Difficulty
 }
 
 export type SessionResult =
-  | { status: 'ok'; token: string; playerId: string; matchId?: string; wsUrl: string; mode: GameMode }
+  | { status: 'ok'; token: string; playerId: string; matchId?: string; wsUrl: string; mode: GameMode; difficulty?: Difficulty }
   | { status: 'error'; error: string }
 
