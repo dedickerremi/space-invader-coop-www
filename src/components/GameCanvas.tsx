@@ -18,7 +18,8 @@ import {
   BossAudio,
 } from '@/core'
 import { takePendingGame } from '@/core/pendingGame'
-import type { GameState, GameOverSummary, Bullet, GameMode, ShipKey, BossKind } from '@/core'
+import { difficultyLabel, startingLives } from '@/core/difficulty'
+import type { GameState, GameOverSummary, Bullet, GameMode, ShipKey, BossKind, Difficulty } from '@/core'
 import { SignInHint } from '@/components/SignInHint'
 import { createSpriteSheetSvg, isSvgSpritesEnabled } from '@/core/svgSpriteSheet'
 import { DEFAULT_COLORS, PATROL_COLOR, ENEMY_BULLET_COLOR } from '@/core/GameRenderer'
@@ -64,6 +65,7 @@ type HudState = {
   waveNumber: number
   levelName: string
   levelTitle: string
+  difficulty: Difficulty | ''
   waveName: string
   totalWaves: number
   victory: boolean
@@ -134,6 +136,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
     waveNumber: 0,
     levelName: '',
     levelTitle: '',
+    difficulty: '',
     waveName: '',
     totalWaves: 0,
     victory: false,
@@ -364,6 +367,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
       // levelName is the storage key ("solo-level2.json"); levelTitle is what
       // players should read ("Sector 2 — Flank Run"). Older servers send no title.
       const levelTitle = state.levelTitle ?? ''
+      const difficulty = state.difficulty ?? ''
       const waveName = state.waveName ?? ''
       const totalWaves = state.totalWaves ?? 0
       const victory = state.victory ?? false
@@ -389,6 +393,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
           prev.waveNumber === waveNumber &&
           prev.levelName === levelName &&
           prev.levelTitle === levelTitle &&
+          prev.difficulty === difficulty &&
           prev.waveName === waveName &&
           prev.totalWaves === totalWaves &&
           prev.victory === victory &&
@@ -425,6 +430,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
           waveNumber,
           levelName,
           levelTitle,
+          difficulty,
           waveName,
           totalWaves,
           victory,
@@ -597,6 +603,7 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
     waveNumber,
     levelName,
     levelTitle,
+    difficulty,
     waveName,
     totalWaves,
     victory,
@@ -604,7 +611,9 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
     gameOverSummary,
   } = hud
 
-  const levelDisplay = levelTitle || levelName
+  const levelDisplay = [levelTitle || levelName, difficultyLabel(difficulty || undefined)].filter(Boolean).join(' · ')
+  // Empty hearts count down from the lives this difficulty starts with.
+  const maxLives = startingLives(difficulty || undefined)
   const levelLabel =
     levelDisplay && waveNumber
       ? `${levelDisplay} · Wave ${waveNumber}${totalWaves ? `/${totalWaves}` : ''}${waveName ? ` — ${waveName}` : ''}`
@@ -616,10 +625,11 @@ export function GameCanvas({ token, wsUrl, matchId, playerId, mode = 'coop', get
   const livesDisplay = hudPlayers.map((p) => {
     const isMe = p.id === playerId
     const label = isMe ? (p.displayName ?? 'YOU') : (p.displayName ?? `P${p.id.slice(-4)}`)
-    const hearts = '♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, 3 - p.lives))
+    const hearts = '♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, maxLives - p.lives))
     const streak = p.killStreak ?? 0
-    // Backend: every 5 consecutive kills guarantees a drop. Highlight when next kill triggers it.
-    const streakHot = streak > 0 && streak % 5 === 4
+    // Streaks no longer earn a guaranteed drop (bonuses come from carriers);
+    // a long one still deserves to glow.
+    const streakHot = streak >= 10
     return { label, hearts, isMe, alive: p.alive, streak, streakHot }
   })
 

@@ -13,17 +13,20 @@ import { backendHttpUrl } from '@/lib/backend'
 // game server free of CORS config and keeps the client on one origin.
 export async function POST(request: NextRequest) {
   let mode: unknown = 'coop'
+  let difficulty: unknown = 'easy'
   try {
-    mode = (await request.json())?.mode ?? 'coop'
+    const body = await request.json()
+    mode = body?.mode ?? 'coop'
+    difficulty = body?.difficulty ?? 'easy'
   } catch {
-    // No body is fine — the backend defaults to coop.
+    // No body is fine — the backend defaults to coop on easy.
   }
 
   try {
     const res = await fetch(`${backendHttpUrl()}/api/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode, difficulty }),
       cache: 'no-store',
     })
 
@@ -41,6 +44,7 @@ export async function POST(request: NextRequest) {
       playerId: session.playerId,
       matchId: session.matchId || undefined,
       mode: session.mode,
+      difficulty: session.difficulty,
       wsUrl: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001',
     })
   } catch {

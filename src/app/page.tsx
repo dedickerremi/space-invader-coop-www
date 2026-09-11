@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MatchmakingClient, GameClient } from '@/core'
-import type { MatchData, GameMode } from '@/core'
+import type { MatchData, GameMode, Difficulty } from '@/core'
+import { DIFFICULTIES, loadDifficulty, saveDifficulty } from '@/core/difficulty'
 import { setPendingGame } from '@/core/pendingGame'
 import { AuthMenu } from '@/components/AuthMenu'
 import { ShipSelector } from '@/components/ShipSelector'
@@ -18,6 +19,16 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [matchData, setMatchData] = useState<MatchData | null>(null)
   const [onlinePlayers, setOnlinePlayers] = useState<number | null>(null)
+  // Players waiting per difficulty, so the multiplayer picker can point at
+  // the difficulty where someone is already queued.
+  const [waiting, setWaiting] = useState<Partial<Record<Difficulty, number>>>({})
+  // The mode whose difficulty picker is open, or null on the mode buttons.
+  const [picking, setPicking] = useState<GameMode | null>(null)
+  const [difficulty, setDifficulty] = useState<Difficulty>('easy')
+
+  useEffect(() => {
+    setDifficulty(loadDifficulty())
+  }, [])
 
   // The Fly backend auto-stops when idle. Ping it as soon as the menu loads
   // so the machine is awake by the time the player picks a mode, instead of
@@ -31,7 +42,8 @@ export default function Home() {
     })
   }, [])
 
-  // Fetch online player count on mount and every 30s
+  // Fetch online player count on mount and every 30s — every 5s while the
+  // multiplayer picker is open, since who is waiting changes by the second.
   useEffect(() => {
     const fetchOnline = async () => {
       try {
@@ -39,6 +51,7 @@ export default function Home() {
         if (res.ok) {
           const data = await res.json()
           setOnlinePlayers(data.playersOnline)
+          setWaiting(data.waiting ?? {})
         }
       } catch {
         // ignore
@@ -46,9 +59,9 @@ export default function Home() {
     }
 
     fetchOnline()
-    const interval = setInterval(fetchOnline, 30_000)
+    const interval = setInterval(fetchOnline, picking === 'coop' ? 5_000 : 30_000)
     return () => clearInterval(interval)
-  }, [])
+  }, [picking])
 
   // Redirect to game when match is ready (solo path)
   useEffect(() => {
@@ -75,12 +88,12 @@ export default function Home() {
     }
   }, [])
 
-  const joinQueueViaWs = useCallback(async () => {
+  const joinQueueViaWs = useCallback(async (difficulty: Difficulty) => {
     setStatus('joining')
     setError(null)
 
     try {
-      const session = await matchmakingRef.current.createSession('coop')
+      const session = await matchmakingRef.current.createSession('coop', difficulty)
       if (session.status !== 'ok') {
         setStatus('error')
         setError(session.error)
@@ -121,6 +134,7 @@ export default function Home() {
           playerId,
           matchId,
           mode: 'coop',
+          difficulty,
         }
         sessionStorage.setItem('matchData', JSON.stringify(data))
         // Store live client so GameCanvas can reuse the connection instead of reconnecting
@@ -143,12 +157,12 @@ export default function Home() {
     }
   }, [router])
 
-  const joinQueue = useCallback(async (mode: GameMode = 'solo') => {
+  const joinQueue = useCallback(async (mode: GameMode, difficulty: Difficulty) => {
     setStatus('joining')
     setError(null)
 
     try {
-      const session = await matchmakingRef.current.createSession(mode)
+      const session = await matchmakingRef.current.createSession(mode, difficulty)
 
       if (session.status === 'ok') {
         setMatchData({
@@ -157,6 +171,7 @@ export default function Home() {
           playerId: session.playerId,
           matchId: session.matchId,
           mode: session.mode,
+          difficulty: session.difficulty,
         })
         setStatus('ready')
       } else {
@@ -170,6 +185,14 @@ export default function Home() {
     }
   }, [])
 
+  const start = (mode: GameMode, chosen: Difficulty) => {
+    setDifficulty(chosen)
+    saveDifficulty(chosen)
+    setPicking(null)
+    if (mode === 'solo') joinQueue('solo', chosen)
+    else joinQueueViaWs(chosen)
+  }
+
   return (
     <div style={containerStyle}>
       <AuthMenu />
@@ -178,13 +201,47 @@ export default function Home() {
 
       {status === 'idle' && <ShipSelector />}
 
-      {status === 'idle' && (
+      {status === 'idle' && picking && (
+        <>
+          <div style={pickerTitleStyle}>
+            {picking === 'solo' ? 'Single Player' : 'Multiplayer'} — choose a difficulty
+          </div>
+          <div style={modeButtonsStyle}>
+            {DIFFICULTIES.map((d) => {
+              const someoneWaiting = picking === 'coop' && (waiting[d.id] ?? 0) > 0
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => start(picking, d.id)}
+                  style={d.id === difficulty ? selectedDifficultyStyle : difficultyButtonStyle}
+                >
+                  <span>{d.label}</span>
+                  <span style={difficultyBlurbStyle}>{d.blurb}</span>
+                  {someoneWaiting && (
+                    <span style={waitingBadgeStyle}>
+                      <span style={pulseStyle}>●</span> {waiting[d.id]} waiting
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          {picking === 'coop' && (
+            <div style={onlinePlayersStyle}>You will be paired with someone who picked the same difficulty.</div>
+          )}
+          <button onClick={() => setPicking(null)} style={cancelButtonStyle}>
+            Back
+          </button>
+        </>
+      )}
+
+      {status === 'idle' && !picking && (
         <>
           <div style={modeButtonsStyle}>
-            <button onClick={() => joinQueue('solo')} style={buttonStyle}>
+            <button onClick={() => setPicking('solo')} style={buttonStyle}>
               Single Player
             </button>
-            <button onClick={joinQueueViaWs} style={buttonStyle}>
+            <button onClick={() => setPicking('coop')} style={buttonStyle}>
               Multiplayer
             </button>
           </div>
@@ -226,7 +283,7 @@ export default function Home() {
           <div style={{ ...statusStyle, color: '#ff8800' }}>
             No opponent found.
           </div>
-          <button onClick={joinQueueViaWs} style={buttonStyle}>
+          <button onClick={() => joinQueueViaWs(difficulty)} style={buttonStyle}>
             Retry
           </button>
         </>
@@ -293,6 +350,47 @@ const buttonStyle: React.CSSProperties = {
   cursor: 'pointer',
   transition: 'all 0.2s',
   fontFamily: 'inherit',
+}
+
+const pickerTitleStyle: React.CSSProperties = {
+  color: '#888',
+  marginBottom: '1.5rem',
+  fontSize: '0.9rem',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+}
+
+const difficultyButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  padding: '1rem 1.5rem',
+  width: '16rem',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '0.4rem',
+  borderColor: '#2a6b4a',
+  color: '#8fd9b0',
+}
+
+const selectedDifficultyStyle: React.CSSProperties = {
+  ...difficultyButtonStyle,
+  borderColor: '#00ff88',
+  color: '#00ff88',
+  boxShadow: '0 0 12px rgba(0, 255, 136, 0.35)',
+}
+
+const difficultyBlurbStyle: React.CSSProperties = {
+  fontSize: '0.65rem',
+  letterSpacing: '0.05em',
+  textTransform: 'none',
+  color: '#777',
+}
+
+const waitingBadgeStyle: React.CSSProperties = {
+  fontSize: '0.7rem',
+  letterSpacing: '0.05em',
+  textTransform: 'none',
+  color: '#ffd166',
 }
 
 const cancelButtonStyle: React.CSSProperties = {

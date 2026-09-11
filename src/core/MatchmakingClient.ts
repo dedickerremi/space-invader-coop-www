@@ -3,7 +3,7 @@
 // Framework-agnostic: pure TypeScript, uses fetch API only
 // ============================================================
 
-import type { SessionResult, GameMode } from './types'
+import type { SessionResult, GameMode, Difficulty } from './types'
 
 export class MatchmakingClient {
   private baseUrl: string
@@ -26,14 +26,15 @@ export class MatchmakingClient {
    * can trust who is connecting.
    *
    * A solo session comes back with a match id already assigned. A coop one
-   * does not: the matchmaker hands it one when it finds an opponent.
+   * does not: the matchmaker hands it one when it finds an opponent at the
+   * same difficulty.
    */
-  async createSession(mode: GameMode = 'coop'): Promise<SessionResult> {
+  async createSession(mode: GameMode = 'coop', difficulty: Difficulty = 'easy'): Promise<SessionResult> {
     try {
       const res = await fetch(`${this.baseUrl}/api/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({ mode, difficulty }),
       })
       const data = await res.json()
 
@@ -48,6 +49,7 @@ export class MatchmakingClient {
         matchId: data.matchId,
         wsUrl: data.wsUrl,
         mode: data.mode ?? mode,
+        difficulty: data.difficulty ?? difficulty,
       }
     } catch {
       return { status: 'error', error: 'Could not reach the game server' }
