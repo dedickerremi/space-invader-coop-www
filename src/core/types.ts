@@ -15,9 +15,15 @@ export type Player = {
   alive: boolean
   lives: number
   invincibleTimer: number  // ticks of invincibility remaining (0 = vulnerable)
-  doubleShotTimer: number  // ticks remaining (0 = inactive)
-  speedBoostTimer: number  // ticks remaining (0 = inactive)
-  shieldTimer: number      // ticks remaining (0 = inactive)
+  doubleShot?: boolean     // kept until the player loses a life
+  speedBoost?: boolean     // kept until the player loses a life
+  shieldCharges?: number   // hits the shield still absorbs (0 = no shield)
+  /** @deprecated Timed bonuses from servers before carriers; read via buffs.ts. */
+  doubleShotTimer?: number
+  /** @deprecated */
+  speedBoostTimer?: number
+  /** @deprecated */
+  shieldTimer?: number
 }
 
 export type PowerUpKind =
@@ -69,6 +75,21 @@ export type PowerUp = {
   kind: PowerUpKind
 }
 
+/**
+ * A bonus carrier: an asteroid or the goblin's courier ship. It never shoots
+ * or hurts; shooting it down releases `drop`, and it takes the bonus with it
+ * if it leaves the screen.
+ */
+export type CarrierKind = 'asteroid' | 'courier'
+
+export type Carrier = {
+  kind: CarrierKind
+  x: number
+  y: number
+  hp: number
+  drop: PowerUpKind
+}
+
 export type Spark = {
   x: number
   y: number
@@ -114,6 +135,8 @@ export type GameState = {
   enemyBullets: EnemyBullet[]
   enemies: Enemy[]
   powerUps: PowerUp[]
+  /** Absent on servers that predate carriers. */
+  carriers?: Carrier[]
   sparks: Spark[]
   lives: number
   points: Record<string, number>
@@ -121,6 +144,8 @@ export type GameState = {
   killStreaks: Record<string, number>
   waveNumber: number
   levelName: string
+  /** Display name ("Sector 2 — Flank Run"); levelName is the storage key. */
+  levelTitle?: string
   waveName: string
   totalWaves: number
   victory?: boolean

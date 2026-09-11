@@ -41,6 +41,8 @@ export type {
   BossKind,
   PowerUp,
   PowerUpKind,
+  Carrier,
+  CarrierKind,
   Spark,
   PlayerScore,
   GameOverSummary,
